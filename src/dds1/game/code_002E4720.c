@@ -97,7 +97,7 @@ extern void func_003110C8(void *arg0, s32 arg1, s32 arg2, s32 arg3, s32 arg4, s3
 extern void EIntr(void);
 extern void sceCdPowerOff(void *arg0);
 extern s32 sdfCreateSemaphore(s32 arg0, s32 arg1, s32 arg2);
-extern s32 func_002CF670(const char *arg0);
+extern s32 func_002CF670(const char *arg0) __attribute__((noreturn));
 extern void *func_002CFEB8(s32 size);
 extern void func_002CFF98(void *ptr);
 extern void *func_002CFF68(s32 size);
@@ -246,7 +246,14 @@ s32 sdfPktQuery(u32 arg0) {
     return -1;
 }
 
-INCLUDE_ASM(const s32, "game/code_002E4720", func_002E5670);
+extern char D_003B4560[]; /* "file didn't open." */
+
+u32 func_002E5670(void) {
+    if (D_003BDA48 == 0) {
+        func_002CF670(D_003B4560);
+    }
+    return *(u32 *)(D_003BDA48 + 0x8);
+}
 
 INCLUDE_ASM(const s32, "game/code_002E4720", func_002E56A0);
 
@@ -370,6 +377,8 @@ void sdfDevDeactivate(DevState *arg0, s32 arg1) {
         arg0->callback(arg0, 0, 0, 0, arg0->callbackContext);
     }
 }
+
+INCLUDE_RODATA(const s32, "game/code_002E4720", D_003B4560);
 
 INCLUDE_RODATA(const s32, "game/code_002E4720", D_003B4578);
 
