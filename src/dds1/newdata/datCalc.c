@@ -76,9 +76,19 @@ INCLUDE_ASM(const s32, "newdata/datCalc", func_00119750);
 
 INCLUDE_ASM(const s32, "newdata/datCalc", func_00119880);
 
-INCLUDE_ASM(const s32, "newdata/datCalc", func_001198B8);
-
 extern s32 D_003BAA00;
+
+s32 func_001198B8(s32 delta) {
+    s32 value = *(s32 *)(D_003BAA00 + 0x3C) + delta;
+    if (value < 0) {
+        value = 0;
+    }
+    if (value > 0x98967F) {
+        value = 0x98967F;
+    }
+    *(s32 *)(D_003BAA00 + 0x3C) = value;
+    return value;
+}
 
 s32 func_001198E8(s32 value) {
     if (*(s32 *)(D_003BAA00 + 0x3C) < value) {
