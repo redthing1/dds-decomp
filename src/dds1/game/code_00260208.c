@@ -132,7 +132,26 @@ void func_002622B0(u32 arg0, u32 arg1, u32 arg2) {
     func_00262148(arg0, arg2);
 }
 
-INCLUDE_ASM(const s32, "game/code_00260208", func_00262300);
+extern void func_002762D8(void *);
+extern void func_00271480(void *, void *, s32, void *);
+extern s32 mnuCreatePanelGroup(u32);
+extern void mnuUpdateFiveListEntries(s32, s32);
+extern s32 mnuCreateSpriteState(u32, u32, u32);
+extern void func_00287450(s32);
+extern void mnuForwardTableByte(u16);
+
+void func_00262300(u8 *work) {
+    s32 panel;
+
+    func_002762D8(work + 0x4F8);
+    func_00271480(work + 0x680, work + 0x4F8, 0, work + 0x574);
+    panel = mnuCreatePanelGroup(*(u32 *)(work + 0x514));
+    *(u32 *)(work + 0xD10) = panel;
+    mnuUpdateFiveListEntries(panel, *(s32 *)(work + 0x90));
+    *(u32 *)(work + 0xD14) = mnuCreateSpriteState(*(u32 *)(work + 0x50C), *(u32 *)(work + 0x500), *(u32 *)(work + 0x514));
+    func_00287450(0);
+    mnuForwardTableByte(*(u16 *)(*(u32 *)(*(u32 *)(work + 0x240) * 0x18 + (u32)work + 0x2CC) + 0x4));
+}
 
 void func_00262398(s32 arg0) {
     s32 panelContext;
