@@ -32,7 +32,13 @@ u32 func_00102878(void) {
     return 0;
 }
 
-INCLUDE_ASM(const s32, "game/code_00101B08", func_001028A0);
+extern void *kwlnTaskGetTaskByName(char *);
+extern s32 func_00101A70(void *);
+extern char D_003BA848[];
+
+s32 func_001028A0(void) {
+    return func_00101A70(kwlnTaskGetTaskByName(D_003BA848));
+}
 
 u32 func_001028C8(void) {
     s32 context;
