@@ -1,6 +1,20 @@
 #include "common.h"
 
-INCLUDE_ASM(const s32, "mc/mcManager", func_00289D68);
+extern s32 func_002F6858(u32, u32 *, s32 *);
+
+s32 func_00289D68(void) {
+    u32 cmdId;
+    s32 status;
+    s32 result = func_002F6858(1, &cmdId, &status);
+
+    if (result != 1) {
+        return 0;
+    }
+    if (status == 0) {
+        return result;
+    }
+    return -1;
+}
 
 void func_00289DA8(u32 port, u32 request) {
     func_002F6D50(port, 0, request, 0);
