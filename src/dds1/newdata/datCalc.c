@@ -56,7 +56,12 @@ void datMoveCursorY(DatCalcCursor *cursor, s32 delta) {
 
 INCLUDE_ASM(const s32, "newdata/datCalc", func_00119300);
 
-INCLUDE_ASM(const s32, "newdata/datCalc", func_00119368);
+s32 func_00119368(u8 *unit, s32 statIndex) {
+    if ((*(u16 *)(unit + 0xE) & 0x7FFF) == 0x1000) {
+        return 1;
+    }
+    return func_00119300(unit, statIndex);
+}
 
 INCLUDE_ASM(const s32, "newdata/datCalc", func_001193A0);
 
