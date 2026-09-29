@@ -14,9 +14,9 @@ extern s32 func_002CD788(void *);
 
 extern s32 func_002CD2A8(u16);
 
-extern s32 func_002CD548(void *, u16);
+extern s32 ptyTestProfileFlag0(void *, u16);
 
-extern void func_002CD428(void *, u16);
+extern void ptyApplyProfile(void *, u16);
 
 extern void mdlFlagSet(s32);
 
@@ -32,8 +32,8 @@ void kwlnItemApplySelection(u32 address) {
     s32 *data = (s32 *)func_002CD788(item);
     s8 selection = item[0x55];
     if (selection != 0 && func_002CD2A8((u16)selection) == *data &&
-        func_002CD548(item, (u16)(s8)item[0x55]) == 0) {
-        func_002CD428(item, (u16)(s8)item[0x55]);
+        ptyTestProfileFlag0(item, (u16)(s8)item[0x55]) == 0) {
+        ptyApplyProfile(item, (u16)(s8)item[0x55]);
         *(s32 *)(scene + 0x24C) = 1;
         if (mdlFlagTest(0x910) == 0) {
             *(s32 *)(scene + 4) |= 1;
@@ -181,7 +181,7 @@ void func_00263E38(s32 scene) {
 }
 
 void func_00263E70(u32 arg0, u32 arg1) {
-    func_002CCE60(arg0, (s32)arg1 + 0x3d0);
+    ptyRecomputeMaxVitals(arg0, (s32)arg1 + 0x3d0);
     func_00262AC0(arg0, arg1);
 }
 
