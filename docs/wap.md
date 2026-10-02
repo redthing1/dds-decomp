@@ -183,6 +183,24 @@ transition and its typed destination. The field wrapper reports unlinked named
 rows explicitly, which makes incomplete or exceptional resource relationships
 inspectable without weakening the exact WAP or FLD2 codecs.
 
+`tools/wap_scene_import.py` applies edits to that metadata back to WAP source:
+
+```sh
+python3 tools/wap_scene_import.py edited-field.glb \
+  src/dds1/data/field/f011.wapasm edited-f011.wapasm \
+  --field 11 --area 1 \
+  --scripts src/dds1/scripts/field/f011.bfasm \
+  --interactions src/dds1/data/field/f011.infasm
+```
+
+Destination arguments can be edited through either their raw three-value array
+or the typed field, area, elevator, facility, and event properties. When both
+forms change they must agree. Position and camera identities, gates, attributes,
+post-transition state, and the DDS tail are also editable. Entry number, actor
+kind, transition dispatch, facility action, actor ownership, and the linked or
+unlinked row set remain fixed; changing those would alter relationships that
+the composed scene does not describe completely.
+
 ## Field-world graph
 
 `tools/field_graph.py` builds a deterministic whole-game navigation graph from

@@ -16,6 +16,7 @@ import fld_model  # noqa: E402
 import fld_scene  # noqa: E402
 import lb  # noqa: E402
 import tmx  # noqa: E402
+import wap  # noqa: E402
 from test_amb_scene import SOURCE as AMB_SOURCE  # noqa: E402
 from test_fld_model_import import (  # noqa: E402
     EDIT_SOURCE,
@@ -189,6 +190,14 @@ class FieldWorldImportTests(unittest.TestCase):
             textures = tmx.parse_source(
                 stem.with_suffix(".tbnasm").read_text(encoding="utf-8")
             )
+            warp_path = base / "f011.wapasm"
+            references = wap.load_references(
+                ROOT / "src" / version / "scripts" / "field" / "f011.bfasm",
+                base / "f011.infasm",
+            )
+            warps = wap.parse_source(
+                warp_path.read_text(encoding="utf-8"), references
+            )
             bundle = tmx.encode(textures)
             document, binary = fld_scene.build_scene(
                 model,
@@ -199,6 +208,9 @@ class FieldWorldImportTests(unittest.TestCase):
                 placement_marker_size=0.0,
                 automap_data=automap,
                 icon_marker_size=0.0,
+                warp_data=wap.encode(warps),
+                field_number=11,
+                area_number=1,
             )
 
             result = field_world_import.import_world(
@@ -208,11 +220,15 @@ class FieldWorldImportTests(unittest.TestCase):
                 binary,
                 textures=textures,
                 automap_data=automap,
+                warps=warps,
+                current_field=11,
+                current_area=1,
             )
             self.assertEqual(result.model, model, version)
             self.assertEqual(result.field, field, version)
             self.assertEqual(result.automap, automap, version)
             self.assertEqual(tmx.encode(result.textures), bundle, version)
+            self.assertEqual(wap.encode(result.warps), wap.encode(warps), version)
 
 
 if __name__ == "__main__":

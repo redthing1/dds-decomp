@@ -446,7 +446,8 @@ python3 tools/field_world_import.py sources edited-field.glb \
   src/dds1/data/field/f011_001.f1asm edited/f011_001.f1asm \
   --field src/dds1/data/field/f011_001.fldasm edited/f011_001.fldasm \
   --textures src/dds1/data/field/f011_001.tbnasm edited/f011_001.tbnasm \
-  --automap src/dds1/data/field/f011.ambasm edited/f011.ambasm
+  --automap src/dds1/data/field/f011.ambasm edited/f011.ambasm \
+  --warps src/dds1/data/field/f011.wapasm edited/f011.wapasm
 ```
 
 An extracted field archive can instead be rebuilt directly. Unchanged archive
@@ -459,10 +460,10 @@ python3 tools/field_world_import.py archive \
 ```
 
 The importer validates the model hierarchy, animation tracks, mesh packets,
-materials, collision and resource transforms, embedded textures, and optional
-automap before writing any output. Unsupported structural edits therefore
-cannot leave a partially accepted set of source resources. Unchanged composed
-scenes reproduce all four paired DDS1 and DDS2 resources byte-for-byte.
+materials, collision and resource transforms, embedded textures, optional
+automap, and transition rows before writing any output. Unsupported edits
+therefore cannot leave a partially accepted set of source resources. Unchanged
+composed scenes reproduce all five paired DDS1 and DDS2 resources byte-for-byte.
 
 ### Collision geometry and transform import
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,8 @@ import fld_scene_import
 import lb
 import tmx
 import tmx_gltf_import
+import wap
+import wap_scene_import
 from gltf_import import GltfImportError, decode_glb
 
 
@@ -24,10 +27,12 @@ class WorldImportResult:
     field: bytes
     textures: tmx.BundleSource | None
     automap: bytes | None
+    warps: wap.WapFile | None
     model_summary: fld_model_import.ImportSummary
     field_summary: fld_scene_import.ImportSummary
     texture_summary: tmx_gltf_import.ImportSummary | None
     automap_summary: amb_scene_import.ImportSummary | None
+    warp_summary: wap_scene_import.ImportSummary | None
 
 
 def import_world(
@@ -38,6 +43,9 @@ def import_world(
     *,
     textures: tmx.BundleSource | None = None,
     automap_data: bytes | None = None,
+    warps: wap.WapFile | None = None,
+    current_field: int | None = None,
+    current_area: int | None = None,
 ) -> WorldImportResult:
     """Validate and import every supplied resource before returning any output."""
 
@@ -59,15 +67,27 @@ def import_world(
         automap, automap_summary = amb_scene_import.import_geometry(
             automap_data, document, binary
         )
+    rebuilt_warps = None
+    warp_summary = None
+    if warps is not None:
+        if current_field is None or current_area is None:
+            raise wap_scene_import.TransitionImportError(
+                "WAP import requires a field and area identity"
+            )
+        rebuilt_warps, warp_summary = wap_scene_import.import_transitions(
+            warps, document, current_field, current_area
+        )
     return WorldImportResult(
         model,
         field,
         rebuilt_textures,
         automap,
+        rebuilt_warps,
         model_summary,
         field_summary,
         texture_summary,
         automap_summary,
+        warp_summary,
     )
 
 
@@ -75,6 +95,10 @@ def import_archive(
     archive_data: bytes,
     document: dict,
     binary: bytes,
+    *,
+    warps: wap.WapFile | None = None,
+    current_field: int | None = None,
+    current_area: int | None = None,
 ) -> tuple[bytes, WorldImportResult]:
     """Import a field scene and rebuild its F1, F2, and TBN archive entries."""
 
@@ -103,6 +127,9 @@ def import_archive(
         document,
         binary,
         textures=textures,
+        warps=warps,
+        current_field=current_field,
+        current_area=current_area,
     )
     if result.textures is None:
         raise AssertionError("archive texture import did not return a bundle")
@@ -138,6 +165,36 @@ def _texture_source(path: Path) -> tmx.BundleSource:
     return tmx.BundleSource(tmx._parse_bundle_records(data))
 
 
+def _warp_references(path: Path) -> wap.References:
+    if path.suffix.lower() != ".wapasm":
+        return wap.References()
+    interaction_path = path.with_suffix(".infasm")
+    script_path = (
+        path.parents[2] / "scripts" / "field" / path.with_suffix(".bfasm").name
+        if len(path.parents) >= 3
+        else Path()
+    )
+    return wap.load_references(
+        script_path if script_path.is_file() else None,
+        interaction_path if interaction_path.is_file() else None,
+    )
+
+
+def _warp_source(path: Path, references: wap.References) -> wap.WapFile:
+    if path.suffix.lower() == ".wapasm":
+        return wap.parse_source(path.read_text(encoding="utf-8"), references)
+    return wap.decode(path.read_bytes())
+
+
+def _field_identity(path: Path) -> tuple[int, int]:
+    match = re.fullmatch(r"[fk](\d{3})_(\d{3})", path.stem, re.IGNORECASE)
+    if not match:
+        raise wap_scene_import.TransitionImportError(
+            "WAP import requires an fNNN_AAA field or archive filename"
+        )
+    return int(match.group(1)), int(match.group(2))
+
+
 def _write_fld(path: Path, data: bytes, source_suffix: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.suffix.lower() == source_suffix:
@@ -162,6 +219,18 @@ def _write_textures(path: Path, source: tmx.BundleSource) -> None:
         path.write_bytes(tmx.encode(source))
 
 
+def _write_warps(
+    path: Path,
+    table: wap.WapFile,
+    references: wap.References,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() == ".wapasm":
+        path.write_text(wap.render_source(table, references), encoding="utf-8")
+    else:
+        path.write_bytes(wap.encode(table))
+
+
 def _print_summary(result: WorldImportResult) -> None:
     parts = [
         f"{result.model_summary.changed_meshes} model meshes",
@@ -180,6 +249,8 @@ def _print_summary(result: WorldImportResult) -> None:
                 f"{result.automap_summary.changed_nodes} automap nodes",
             )
         )
+    if result.warp_summary is not None:
+        parts.append(f"{result.warp_summary.changed_rows} transition rows")
     print("changed " + ", ".join(parts))
 
 
@@ -193,6 +264,9 @@ def main() -> None:
     archive_parser.add_argument("scene", type=Path)
     archive_parser.add_argument("input", type=Path)
     archive_parser.add_argument("output", type=Path)
+    archive_parser.add_argument(
+        "--warps", nargs=2, type=Path, metavar=("INPUT", "OUTPUT")
+    )
 
     sources = commands.add_parser(
         "sources", help="write edited loose binaries or exact sources"
@@ -209,13 +283,38 @@ def main() -> None:
     sources.add_argument(
         "--automap", nargs=2, type=Path, metavar=("INPUT", "OUTPUT")
     )
+    sources.add_argument(
+        "--warps", nargs=2, type=Path, metavar=("INPUT", "OUTPUT")
+    )
 
     args = parser.parse_args()
     try:
         document, binary = decode_glb(args.scene.read_bytes())
+        identity = (
+            _field_identity(
+                args.input if args.command == "archive" else args.field[0]
+            )
+            if args.warps is not None
+            else None
+        )
+        warp_references = (
+            _warp_references(args.warps[0])
+            if args.warps is not None
+            else wap.References()
+        )
+        warps = (
+            _warp_source(args.warps[0], warp_references)
+            if args.warps is not None
+            else None
+        )
         if args.command == "archive":
             rebuilt, result = import_archive(
-                args.input.read_bytes(), document, binary
+                args.input.read_bytes(),
+                document,
+                binary,
+                warps=warps,
+                current_field=identity[0] if identity is not None else None,
+                current_area=identity[1] if identity is not None else None,
             )
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_bytes(rebuilt)
@@ -237,6 +336,9 @@ def main() -> None:
                 binary,
                 textures=textures,
                 automap_data=automap_data,
+                warps=warps,
+                current_field=identity[0] if identity is not None else None,
+                current_area=identity[1] if identity is not None else None,
             )
             _write_fld(args.model_output, result.model, ".f1asm")
             _write_fld(args.field[1], result.field, ".fldasm")
@@ -248,6 +350,10 @@ def main() -> None:
                 if result.automap is None:
                     raise AssertionError("automap import did not return data")
                 _write_automap(args.automap[1], result.automap)
+        if args.warps is not None:
+            if result.warps is None:
+                raise AssertionError("WAP import did not return a table")
+            _write_warps(args.warps[1], result.warps, warp_references)
         _print_summary(result)
     except (
         GltfImportError,
