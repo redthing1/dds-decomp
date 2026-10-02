@@ -3,10 +3,10 @@
 The `dds1-dev` and `dds2-dev` targets build separate executables whose layouts
 can grow without weakening the byte-identical retail builds. Each target
 recompiles and replaces selected code, read-only data, and initialized
-small-data sections from three paired code units, and moves one source-owned
-zero-initialized state object. One replacement retains two assembly fallback
-functions. The targets also link development-only C code and data into an
-appended loadable segment:
+small-data sections from five paired code units, and moves one source-owned
+zero-initialized state object. The replacements retain seven declared assembly
+fallback functions in DDS1 and eight in DDS2. The targets also link
+development-only C code and data into an appended loadable segment:
 
 ```sh
 ninja dds1-dev dds2-dev
@@ -32,8 +32,12 @@ the following hold:
 - relocations against named replacement symbols keep that exact identity and
   addend; address-containment mapping is limited to ELF section-symbol
   relocations;
-- every declared assembly fallback has the same function contract, exact
-  bytes, and relative relocation signature as its retail object definition;
+- every declared assembly fallback has the same function contract, relative
+  relocation signature, and instruction bytes as its retail object definition;
+  changed section-symbol `R_MIPS_26` fields and canonical `HI16`/`LO16` address
+  pairs are accepted only when both objects resolve them to the same named
+  function and intra-function offset, while named-symbol relocations must
+  preserve their encoded addends;
 - every changed word outside the declared old slots, ELF metadata, and heap
   patches is explained by a relocation to the corresponding replacement
   symbol and addend;
@@ -54,8 +58,14 @@ the following hold:
 - each NOBITS move asserts the number of relocation records whose effective
   targets land in its new range;
 - every allocated replacement-object section is explicitly moved or retained;
-  retained data and BSS sections must remain empty, and COMMON storage is
-  rejected;
+  nonempty retained sections require exact file-backed object bytes, flags,
+  alignment, named symbols, and relocations, while COMMON storage is rejected;
+- every nonempty retained section stays at its asserted retail address with
+  exact linked bytes and exported symbols, preserves the retail `_gp`, and has
+  exactly the declared retail and development physical GP-based address forms;
+  development sites must remain a subset of the same named retail function
+  offsets, while source rebuilt with `-G0` may replace declared retail sites
+  with audited `HI16`/`LO16` relocations;
 - each development-only addition occupies its linker-derived span and retains
   its expected number of relocation entries; and
 - each static linker redirect starts at its asserted retail target and resolves
@@ -64,10 +74,14 @@ the following hold:
 Each `replacements` entry substitutes a separately compiled object for the
 object named by its `retail_object`; its moved sections are declared in
 `moves`, while `retained_sections` accounts for allocated sections that stay
-at their retail placements. The current policy requires every retained section
-to have size zero. A replacement source may contain `INCLUDE_ASM` only when its
-symbols are explicitly listed as fallbacks in source order. `INCLUDE_RODATA`
-and `INCLUDE_SDATA` remain unsupported for replacement objects.
+at their retail placements. Empty retained sections may be absent. A nonempty
+entry must declare its retail address, size, alignment, file storage, named
+symbol count, and development GP-reference count. If the retail count differs,
+`expected_retail_gp_references` declares it explicitly; otherwise it defaults
+to the development count. Nonempty retained NOBITS is unsupported.
+A replacement source may contain `INCLUDE_ASM` only when its symbols are
+explicitly listed as fallbacks in source order. `INCLUDE_RODATA` and
+`INCLUDE_SDATA` remain unsupported for replacement objects.
 
 The descriptors for the current moves and their asserted binary sites are
 `config/dds1/devbuild.json` and `config/dds2/devbuild.json`. The checks
@@ -97,7 +111,7 @@ placing any of them in the retail link.
 ## Current scope
 
 These are relocatable development builds, not general mod loaders. Each
-version replaces three paired units, then links one development entry object.
+version replaces five paired units, then links one development entry object.
 The first smaller replacement is compiled separately with `-G0`: its `.text`
 is `0x3D0` bytes rather than the retail `0x3C8`, so two later function
 definitions move by eight bytes. The mixed-source replacement grows from
@@ -121,22 +135,55 @@ relocation records in each title, and leaves the executable file payload
 unchanged while increasing the appended segment's memory size by exactly
 `0x40`.
 
-Together the replacements pair 73 DDS1 and 74 DDS2 exported symbols, 50 of
-which change their offset within their replacement. The verifier follows
-1,002 DDS1 and 1,025 DDS2 external relocations to shifted definitions, plus 45
-and 47 relocations between replacement objects. It retains 223 DDS1 and 231
-DDS2 relocation entries within the file-backed moved sections, and follows 26
-additional records into the NOBITS object in each title. All counts are
-asserted by the version descriptors.
+The complete FileManager subsystem is the first stateful replacement. Its
+manager and callback-driver text, read-only strings, and `fileManagerWork`
+state move together. The driver retains a source-built `0x10` small-data
+section at its retail address. Current DDS1 recovers the leading callback as
+source; its four guard accesses become ordinary audited `HI16`/`LO16`
+relocations under `-G0`, and the driver grows from `0xEF8` to `0xF10`. The two
+remaining assembly callbacks contain six baked GP-relative accesses. DDS2's
+driver grows to `0xF08` and its three assembly callbacks retain ten accesses.
+The retained-section audit proves those six/ten physical references at the
+same fallback-function offsets, exact retained objects, and an unchanged `_gp`
+instead of silently splitting the live state.
+
+Together the replacements move 120 DDS1 and 121 DDS2 exported symbols, plus
+two retained FileManager small-data symbols per title. Seventy-three DDS1 and
+64 DDS2 moved definitions change their relative offsets. The verifier follows
+1,089/1,111 external relocation sites targeting shifted definitions, 75/77
+relocations between replacement objects, and 1,461/1,521 total relocation
+targets into moved content. The moved sections retain 549/560 relocation
+entries. All counts are asserted by the version descriptors.
 
 Replacement-owned code and read-only data may change size and contents. A
 declared, file-backed initialized small-data section may also move when all of
 its references and relocatable initializers pass the same closure audit. A
-declared NOBITS object may move only when its source-owned input section, exact
-retail and development extents, storage class, and complete incoming target
-count are proven. Unaccounted allocated data, other nonempty BSS, and COMMON
+declared initialized section may remain at its retail address only under the
+exact retained-section contract above. A declared NOBITS object may move only
+when its source-owned input section, exact retail and development extents,
+storage class, and complete incoming target count are proven. Unaccounted
+allocated data, other nonempty BSS, and COMMON
 storage remain rejected. Extending the replacement set is therefore a
 deliberate per-object operation with a fail-closed link audit, not a claim that
 arbitrary assembly, DMA data, or physical-address payloads are already
 movable. Emulator and hardware execution remain an independent validation
 step rather than a requirement for the static build capability.
+
+## Portability boundary
+
+Relocating a complete stateful subsystem proves that its code, owned state,
+callbacks, and aliases are represented by the source and linker model rather
+than by accidental retail addresses. It does not make that source host-native.
+The development ELFs still use the 32-bit Emotion Engine ABI, MIPS calling
+conventions, PS2 kernel handles, and the original SDF/IOP services. DMA-facing
+addresses and several callback values are carried in 32-bit integer fields,
+and the retained FileManager small-data section is intentionally an ABI island
+inside the retail `$gp` window.
+
+The useful porting boundary is therefore explicit: the recovered state layout
+and lifecycle can remain game code, while allocation, asynchronous I/O, task
+scheduling, DMA/address translation, and platform callback transport require
+target-specific adapters. A native host build must give those concepts typed
+handles and address representations before changing pointer width or structure
+layout. The relocation verifier supplies evidence about ownership and hidden
+address dependencies; it is not a substitute for that interface work.
