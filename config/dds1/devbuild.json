@@ -128,6 +128,17 @@
       "alignment": 8,
       "old_vaddr": "0x003BAAD0",
       "expected_relocations": 2
+    },
+    {
+      "object": "build/dds1/src/dds1/file/fileManager.o",
+      "section": ".bss",
+      "storage": "nobits",
+      "old_size": "0x40",
+      "new_size": "0x40",
+      "alignment": 8,
+      "old_vaddr": "0x003DC658",
+      "expected_relocations": 0,
+      "expected_target_relocations": 26
     }
   ],
   "additions": [
