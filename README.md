@@ -58,7 +58,7 @@ python tools/extract.py          # -> SHA-1-checked executables and selected arc
 python configure.py              # split with splat, write build.ninja and objdiff.json
 ninja                            # build and verify every extracted version (or: ninja dds1)
 ninja dds1-scripts dds2-scripts  # assemble and verify the tracked script corpora
-ninja dds1-field-data dds2-field-data  # assemble and verify INF/WAP/FLD1/FLD2 field data
+ninja dds1-field-data dds2-field-data  # assemble and verify INF/WAP/FLD1/FLD2/TBN field data
 ninja dds1-field-archives dds2-field-archives  # rebuild field resources inside exact LB archives
 ninja dds1-battle-data dds2-battle-data  # assemble and verify battle tables
 python3 tools/flw0.py view src/dds1/scripts/event/e670.bfasm  # readable script view

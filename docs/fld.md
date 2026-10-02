@@ -429,11 +429,12 @@ DDS2 default-area links, plus all 40 DDS1 and 22 DDS2 face overrides.
 ## Archive boundary
 
 Most field resources are stored as compressed blocks inside `.LB` archives.
-The `.fldasm` and `.f1asm` sources describe the decompressed field objects.
-`tools/lb.py` then places those outputs into the paired resource archive while
-retaining any remaining blocks from an extracted retail base. See
+The `.fldasm`, `.f1asm`, and `.tbnasm` sources describe the decompressed field
+objects and texture bundle. `tools/lb.py` then places those outputs into the
+paired resource archive while retaining any remaining blocks from an extracted
+retail base. See
 [`lb.md`](lb.md) for the LB container, compression codec, archive source, and
-exact build targets.
+exact build targets, and [`tmx.md`](tmx.md) for texture source and PNG export.
 
 Run the codec, relocation, semantic-link, and tracked-source tests with:
 

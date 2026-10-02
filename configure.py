@@ -17,6 +17,7 @@ Pipeline per version (see README.md):
   INF (.infasm)      tools/inf.py assemble -> build/<v>/data/field/, then SHA-1 check
   WAP (.wapasm)      tools/wap.py assemble -> build/<v>/data/field/, then SHA-1 check
   FLD2 (.fldasm)     tools/fld.py assemble -> build/<v>/data/field/, then SHA-1 check
+  TBN (.tbnasm)      tools/tmx.py assemble -> build/<v>/data/field/, then SHA-1 check
   LB (.lbasm)        tools/lb.py assemble over an extracted base -> build/<v>/data/field/
   battle (.tblasm)   tools/battle_tbl.py assemble -> build/<v>/data/battle/, then SHA-1 check
 
@@ -237,6 +238,11 @@ def write_ninja(versions: list[str], args: argparse.Namespace) -> dict[str, list
         "fld1",
         f"mkdir -p $outdir && {sys.executable} tools/fld.py assemble $in $out",
         description="fld1 $in",
+    )
+    n.rule(
+        "tmx",
+        f"mkdir -p $outdir && {sys.executable} tools/tmx.py assemble $in $out",
+        description="tmx $in",
     )
     n.rule(
         "field_world",
@@ -511,6 +517,28 @@ def write_ninja(versions: list[str], args: argparse.Namespace) -> dict[str, list
             version_outputs.append(str(fld1_stamp))
             field_data_stamps.append(str(fld1_stamp))
 
+        tbn_manifest = Path("config") / version / "field_tbn.sha1"
+        if (ROOT / tbn_manifest).exists():
+            tbn_source_dir = Path("src") / version / "data" / "field"
+            tbn_output_dir = Path("build") / version / "data" / "field"
+            tbn_sources = sorted((ROOT / tbn_source_dir).glob("*.tbnasm"))
+            tbn_outputs = []
+            for source in tbn_sources:
+                source = source.relative_to(ROOT)
+                output = tbn_output_dir / source.with_suffix(".tbn").name
+                n.build(
+                    str(output),
+                    "tmx",
+                    str(source),
+                    implicit=["tools/tmx.py"],
+                    variables={"outdir": str(output.parent)},
+                )
+                tbn_outputs.append(str(output))
+            tbn_stamp = tbn_output_dir / "field_tbn.ok"
+            n.build(str(tbn_stamp), "check", str(tbn_manifest), implicit=tbn_outputs)
+            version_outputs.append(str(tbn_stamp))
+            field_data_stamps.append(str(tbn_stamp))
+
         if field_data_stamps:
             n.build(f"{version}-field-data", "phony", field_data_stamps)
 
@@ -526,9 +554,12 @@ def write_ninja(versions: list[str], args: argparse.Namespace) -> dict[str, list
                 base = Path("orig") / version / "field" / output.name
                 resource = lb_output_dir / source.with_suffix(".f2").name
                 resource_f1 = lb_output_dir / source.with_suffix(".f1").name
+                resource_tbn = lb_output_dir / source.with_suffix(".tbn").name
                 resources = ["tools/lb.py", str(base), str(resource)]
                 if (ROOT / fld1_manifest).exists():
                     resources.append(str(resource_f1))
+                if (ROOT / tbn_manifest).exists():
+                    resources.append(str(resource_tbn))
                 n.build(
                     str(output),
                     "lb",
@@ -651,6 +682,9 @@ def write_ninja(versions: list[str], args: argparse.Namespace) -> dict[str, list
         fld1_manifest = ROOT / "config" / version / "field_fld1.sha1"
         if fld1_manifest.exists():
             configure_inputs.append(str(fld1_manifest.relative_to(ROOT)))
+        tbn_manifest = ROOT / "config" / version / "field_tbn.sha1"
+        if tbn_manifest.exists():
+            configure_inputs.append(str(tbn_manifest.relative_to(ROOT)))
         battle_manifest = ROOT / "config" / version / "battle_tables.sha1"
         if battle_manifest.exists():
             configure_inputs.append(str(battle_manifest.relative_to(ROOT)))
