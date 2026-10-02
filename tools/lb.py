@@ -434,7 +434,12 @@ def _replacement_path(resource_dir: Path, source: str) -> Path:
     return resource_dir / relative
 
 
-def _build_block(source: SourceEntry, raw: bytes) -> bytes:
+def _build_resource_block(
+    type_id: int,
+    user_id: int,
+    extension_name: str,
+    raw: bytes,
+) -> bytes:
     if len(raw) > 0xFFFFFFFF:
         raise LbError("replacement resource exceeds the LB u32 size limit")
     encoded = compress(raw)
@@ -446,13 +451,53 @@ def _build_block(source: SourceEntry, raw: bytes) -> bytes:
         stored = raw
     if HEADER_SIZE + len(stored) > 0xFFFFFFFF:
         raise LbError("stored resource exceeds the LB u32 size limit")
-    extension = source.extension.encode("ascii").ljust(4, b"\0")
+    extension = extension_name.encode("ascii").ljust(4, b"\0")
     header = struct.pack(
-        "<BBhI4sI", source.type_id, compressed, source.user_id,
-        HEADER_SIZE + len(stored), extension, len(raw),
+        "<BBhI4sI",
+        type_id,
+        compressed,
+        user_id,
+        HEADER_SIZE + len(stored),
+        extension,
+        len(raw),
     )
     block = header + stored
     return block + bytes(_align(len(block)) - len(block))
+
+
+def _build_block(source: SourceEntry, raw: bytes) -> bytes:
+    return _build_resource_block(
+        source.type_id, source.user_id, source.extension, raw
+    )
+
+
+def replace_entries(data: bytes, replacements: dict[int, bytes]) -> bytes:
+    """Rebuild selected resources while retaining every unchanged LB block."""
+
+    archive = parse_archive(data)
+    invalid = set(replacements) - set(range(len(archive.entries)))
+    if invalid:
+        raise LbError(
+            "replacement entry indices are outside the archive: "
+            + ", ".join(str(index) for index in sorted(invalid))
+        )
+    blocks = []
+    for entry in archive.entries:
+        replacement = replacements.get(entry.index)
+        if replacement is None or replacement == entry_data(entry):
+            blocks.append(entry.block)
+            continue
+        blocks.append(
+            _build_resource_block(
+                entry.type_id,
+                entry.user_id,
+                entry.extension,
+                replacement,
+            )
+        )
+    result = b"".join(blocks) + archive.ending
+    parse_archive(result)
+    return result
 
 
 def assemble(source: Source, base_data: bytes, resource_dir: Path) -> bytes:

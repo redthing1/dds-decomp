@@ -436,6 +436,34 @@ described in [`wap.md`](wap.md). It emits deterministic JSON or Graphviz DOT;
 non-field transition types remain in the per-scene metadata until their target
 identity is independently established.
 
+### Composed field import
+
+`tools/field_world_import.py` applies one edited composed GLB to all of its
+supplied native resources. Loose exact sources can be updated together:
+
+```sh
+python3 tools/field_world_import.py sources edited-field.glb \
+  src/dds1/data/field/f011_001.f1asm edited/f011_001.f1asm \
+  --field src/dds1/data/field/f011_001.fldasm edited/f011_001.fldasm \
+  --textures src/dds1/data/field/f011_001.tbnasm edited/f011_001.tbnasm \
+  --automap src/dds1/data/field/f011.ambasm edited/f011.ambasm
+```
+
+An extracted field archive can instead be rebuilt directly. Unchanged archive
+blocks retain their original compression and padding; changed F1, F2, and TBN
+entries use the deterministic LB compressor:
+
+```sh
+python3 tools/field_world_import.py archive \
+  edited-field.glb extracted/f011_001.LB edited/f011_001.LB
+```
+
+The importer validates the model hierarchy, animation tracks, mesh packets,
+materials, collision and resource transforms, embedded textures, and optional
+automap before writing any output. Unsupported structural edits therefore
+cannot leave a partially accepted set of source resources. Unchanged composed
+scenes reproduce all four paired DDS1 and DDS2 resources byte-for-byte.
+
 ### Collision geometry and transform import
 
 `tools/fld_scene_import.py` applies edited collision vertices and static

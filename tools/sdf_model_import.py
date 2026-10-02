@@ -598,6 +598,14 @@ def import_model_graphs(
     ):
         raise ModelImportError("GLB has an invalid animation array")
     animation_names = tuple(animation["name"] for animation in animations)
+    selected_animation_prefixes = tuple(
+        f"{graph.name}/clip_" for graph in graphs
+    )
+    selected_animation_names = tuple(
+        name
+        for name in animation_names
+        if name.startswith(selected_animation_prefixes)
+    )
     expected_animation_names = tuple(
         f"{graph.name}/clip_{clip_index}"
         for graph in graphs
@@ -607,8 +615,8 @@ def import_model_graphs(
         and _represented_motion_tracks(graph.motion, clip)[0]
     )
     if (
-        len(set(animation_names)) != len(animation_names)
-        or set(animation_names) != set(expected_animation_names)
+        len(set(selected_animation_names)) != len(selected_animation_names)
+        or set(selected_animation_names) != set(expected_animation_names)
     ):
         raise ModelImportError("GLB changes the selected models' animation set")
 

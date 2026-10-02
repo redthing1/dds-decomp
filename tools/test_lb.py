@@ -139,6 +139,23 @@ class LbCodecTests(unittest.TestCase):
         self.assertEqual(lb.entry_data(changed.entries[0]), resources[0][3])
         self.assertEqual(lb.entry_data(changed.entries[1]), replacement)
 
+    def test_replaces_archive_entries_in_memory(self) -> None:
+        resources = [
+            (1, 0, "TBN", b"texture" * 100),
+            (1, 7, "F2", b"field" * 160),
+        ]
+        base = _archive(resources)
+        replacement = b"edited field" * 90
+        rebuilt = lb.replace_entries(base, {1: replacement})
+
+        original = lb.parse_archive(base)
+        changed = lb.parse_archive(rebuilt)
+        self.assertEqual(changed.entries[0].block, original.entries[0].block)
+        self.assertEqual(lb.entry_data(changed.entries[1]), replacement)
+        self.assertEqual(lb.replace_entries(base, {1: resources[1][3]}), base)
+        with self.assertRaisesRegex(lb.LbError, "outside the archive"):
+            lb.replace_entries(base, {2: b"missing"})
+
     def test_wrong_retail_base_is_rejected(self) -> None:
         resources = [(1, 0, "F2", b"field" * 40)]
         base = _archive(resources)

@@ -360,7 +360,8 @@ class FldModelImportTests(unittest.TestCase):
 
     def test_rejects_added_motion_clip(self) -> None:
         duplicate = dict(self.document["animations"][0])
-        duplicate["name"] = "unexpected/clip_0"
+        prefix = duplicate["name"].rsplit("/", 1)[0]
+        duplicate["name"] = f"{prefix}/clip_99"
         self.document["animations"].append(duplicate)
         with self.assertRaisesRegex(
             fld_model_import.ModelImportError,
