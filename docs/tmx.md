@@ -82,6 +82,31 @@ level, sharing the indexed texture's palette. PNG output represents the base
 level, while the decoder retains the mip count and texture control word for
 model-export metadata.
 
+## Texture editing
+
+One decoded PNG can be imported into an exact bundle source or binary while
+retaining that texture's dimensions, GS pixel format, CLUT format, flags, and
+existing mip levels:
+
+```sh
+python3 tools/tmx.py import src/dds1/data/field/f011_001.tbnasm \
+  edited-000.png edited-f011_001.tbnasm --texture 0
+python3 tools/tmx.py assemble edited-f011_001.tbnasm edited-f011_001.tbn
+```
+
+The replacement must be a non-interlaced 8-bit PNG with the original width
+and height. Direct-color textures convert into their existing `PSMCT32`,
+`PSMCT24`, or `PSMCT16` profile; 24-bit input must remain opaque, and PS2
+alpha or RGB5A1 channels use their native quantization. Indexed textures keep
+their original palette and accept only colors already present in it. This
+fails visibly instead of silently choosing a new palette or changing material
+indices. Mip payloads remain byte-identical because a single replacement image
+edits only the base level.
+
+Writing an output whose name ends in `.tbnasm` produces canonical source;
+other output names produce an assembled TBN. Importing an unmodified PNG from
+`extract` recreates every supported native pixel profile byte-for-byte.
+
 ## Model export
 
 `tools/fld_model.py` accepts an LB archive directly, or a loose F1/F1 source

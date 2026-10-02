@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode DDS TBN/TXP0 texture bundles and their TMX0 images."""
+"""Decode, assemble, and edit DDS TBN/TXP0 texture bundles."""
 
 from __future__ import annotations
 
@@ -284,13 +284,11 @@ def parse_bundle(data: bytes) -> tuple[Texture, ...]:
     )
 
 
-def render_source(data: bytes) -> str:
-    """Render a complete TBN packet as exact, editable text source."""
+def render_bundle_source(source: BundleSource) -> str:
+    """Render parsed texture records as canonical, editable text source."""
 
-    if data[8:12] != b"TXP0":
-        raise TmxError("exact source requires a complete TBN packet")
     lines = ["tbn 1"]
-    for texture in _parse_bundle_records(data):
+    for texture in source.textures:
         clut = (
             "PSMCT16"
             if texture.clut_psm == 2
@@ -308,6 +306,14 @@ def render_source(data: bytes) -> str:
             lines.append(f"data {texture.payload[offset : offset + 32].hex()}")
         lines.append("end_texture")
     return "\n".join(lines) + "\n"
+
+
+def render_source(data: bytes) -> str:
+    """Render a complete TBN packet as exact, editable text source."""
+
+    if data[8:12] != b"TXP0":
+        raise TmxError("exact source requires a complete TBN packet")
+    return render_bundle_source(BundleSource(_parse_bundle_records(data)))
 
 
 def _source_fields(parts: list[str], line: int) -> dict[str, str]:
@@ -517,6 +523,280 @@ def encode_png(texture: Texture) -> bytes:
     )
 
 
+def decode_png(data: bytes) -> tuple[int, int, bytes]:
+    """Decode a non-interlaced 8-bit PNG to RGBA pixels."""
+
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise TmxError("replacement image is not a PNG")
+    offset = 8
+    header: tuple[int, ...] | None = None
+    palette: bytes | None = None
+    transparency: bytes | None = None
+    compressed = bytearray()
+    saw_end = False
+    while offset < len(data):
+        if offset + 12 > len(data):
+            raise TmxError("truncated PNG chunk")
+        size = struct.unpack_from(">I", data, offset)[0]
+        kind = data[offset + 4 : offset + 8]
+        end = offset + 12 + size
+        if end > len(data):
+            raise TmxError("PNG chunk exceeds the file")
+        payload = data[offset + 8 : offset + 8 + size]
+        checksum = struct.unpack_from(">I", data, offset + 8 + size)[0]
+        if zlib.crc32(kind + payload) & 0xFFFFFFFF != checksum:
+            raise TmxError(f"PNG {kind.decode('ascii', 'replace')} CRC mismatch")
+        if kind == b"IHDR":
+            if header is not None or size != 13:
+                raise TmxError("invalid PNG IHDR")
+            header = struct.unpack(">IIBBBBB", payload)
+        elif kind == b"PLTE":
+            palette = payload
+        elif kind == b"tRNS":
+            transparency = payload
+        elif kind == b"IDAT":
+            compressed.extend(payload)
+        elif kind == b"IEND":
+            if payload:
+                raise TmxError("invalid PNG IEND")
+            saw_end = True
+            if end != len(data):
+                raise TmxError("PNG has data after IEND")
+            break
+        offset = end
+    if header is None or not saw_end or not compressed:
+        raise TmxError("PNG is missing IHDR, IDAT, or IEND")
+
+    width, height, depth, color_type, compression, filtering, interlace = header
+    if not width or not height:
+        raise TmxError("PNG has zero dimensions")
+    if depth != 8 or compression or filtering or interlace:
+        raise TmxError("replacement PNG must be non-interlaced 8-bit data")
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}.get(color_type)
+    if channels is None:
+        raise TmxError(f"unsupported PNG color type {color_type}")
+    if color_type == 3 and (
+        palette is None or len(palette) % 3 or not 1 <= len(palette) // 3 <= 256
+    ):
+        raise TmxError("indexed PNG has an invalid palette")
+    if transparency is not None and color_type not in {3}:
+        raise TmxError("PNG transparency is supported only for indexed images")
+
+    stride = width * channels
+    try:
+        filtered = zlib.decompress(bytes(compressed))
+    except zlib.error as exc:
+        raise TmxError("invalid PNG compressed data") from exc
+    expected = height * (stride + 1)
+    if len(filtered) != expected:
+        raise TmxError(
+            f"PNG has {len(filtered)} decompressed bytes, expected {expected}"
+        )
+
+    rows: list[bytes] = []
+    source = 0
+    for row_index in range(height):
+        filter_kind = filtered[source]
+        source += 1
+        encoded = filtered[source : source + stride]
+        source += stride
+        previous = rows[-1] if rows else bytes(stride)
+        row = bytearray(stride)
+        for index, value in enumerate(encoded):
+            left = row[index - channels] if index >= channels else 0
+            above = previous[index]
+            upper_left = previous[index - channels] if index >= channels else 0
+            if filter_kind == 0:
+                predictor = 0
+            elif filter_kind == 1:
+                predictor = left
+            elif filter_kind == 2:
+                predictor = above
+            elif filter_kind == 3:
+                predictor = (left + above) // 2
+            elif filter_kind == 4:
+                estimate = left + above - upper_left
+                distances = (
+                    abs(estimate - left),
+                    abs(estimate - above),
+                    abs(estimate - upper_left),
+                )
+                predictor = (left, above, upper_left)[distances.index(min(distances))]
+            else:
+                raise TmxError(
+                    f"PNG row {row_index} uses invalid filter {filter_kind}"
+                )
+            row[index] = (value + predictor) & 0xFF
+        rows.append(bytes(row))
+
+    pixels = bytearray(width * height * 4)
+    destination = 0
+    for row in rows:
+        for offset in range(0, len(row), channels):
+            sample = row[offset : offset + channels]
+            if color_type == 0:
+                rgba = bytes((sample[0], sample[0], sample[0], 0xFF))
+            elif color_type == 2:
+                rgba = sample + b"\xff"
+            elif color_type == 3:
+                palette_index = sample[0]
+                palette_offset = palette_index * 3
+                if palette is None or palette_offset + 3 > len(palette):
+                    raise TmxError("indexed PNG pixel exceeds its palette")
+                alpha = (
+                    transparency[palette_index]
+                    if transparency is not None and palette_index < len(transparency)
+                    else 0xFF
+                )
+                rgba = palette[palette_offset : palette_offset + 3] + bytes((alpha,))
+            elif color_type == 4:
+                rgba = bytes((sample[0], sample[0], sample[0], sample[1]))
+            else:
+                rgba = sample
+            pixels[destination : destination + 4] = rgba
+            destination += 4
+    return width, height, bytes(pixels)
+
+
+def _base_pixel_size(width: int, height: int, psm: int) -> int:
+    pixels = width * height
+    return {
+        0x00: pixels * 4,
+        0x01: pixels * 3,
+        0x02: pixels * 2,
+        0x13: pixels,
+        0x14: (pixels + 1) // 2,
+    }[psm]
+
+
+def _palette_size(psm: int, clut_psm: int) -> int:
+    if psm == 0x13:
+        return 0x400
+    if psm == 0x14:
+        return {0: 0x40, 2: 0x20}[clut_psm]
+    return 0
+
+
+def _contract_alpha(value: int) -> int:
+    return min((value + 1) // 2, 0x80)
+
+
+def _encode_base_pixels(texture: EncodedTexture, rgba: bytes) -> bytes:
+    count = texture.width * texture.height
+    if len(rgba) != count * 4:
+        raise TmxError("replacement image has an invalid RGBA payload")
+    if texture.psm == 0x00:
+        return bytes(
+            channel
+            for offset in range(0, len(rgba), 4)
+            for channel in (
+                rgba[offset],
+                rgba[offset + 1],
+                rgba[offset + 2],
+                _contract_alpha(rgba[offset + 3]),
+            )
+        )
+    if texture.psm == 0x01:
+        if any(rgba[offset + 3] != 0xFF for offset in range(0, len(rgba), 4)):
+            raise TmxError("PSMCT24 replacement PNG must be fully opaque")
+        return bytes(
+            channel
+            for offset in range(0, len(rgba), 4)
+            for channel in rgba[offset : offset + 3]
+        )
+    if texture.psm == 0x02:
+        result = bytearray()
+        for offset in range(0, len(rgba), 4):
+            red, green, blue, alpha = rgba[offset : offset + 4]
+            value = (
+                (red * 31 + 127) // 255
+                | ((green * 31 + 127) // 255) << 5
+                | ((blue * 31 + 127) // 255) << 10
+                | (0x8000 if alpha >= 0x80 else 0)
+            )
+            result.extend(struct.pack("<H", value))
+        return bytes(result)
+
+    palette_size = _palette_size(texture.psm, texture.clut_psm)
+    stored_palette = texture.payload[:palette_size]
+    if texture.psm == 0x13:
+        colors = _palette(_unswizzle_psmt8_palette(stored_palette), 256)
+    elif texture.clut_psm == 0:
+        colors = _palette(stored_palette, 16)
+    else:
+        colors = _palette_16(stored_palette, 16)
+    indices_by_color: dict[tuple[int, int, int, int], int] = {}
+    for index, color in enumerate(colors):
+        indices_by_color.setdefault(color, index)
+    original_data = texture.payload[palette_size:]
+    if texture.psm == 0x13:
+        original_indices = original_data[:count]
+    else:
+        original_indices = bytes(
+            (original_data[index // 2] >> ((index & 1) * 4)) & 0xF
+            for index in range(count)
+        )
+    indices = []
+    for pixel, offset in enumerate(range(0, len(rgba), 4)):
+        color = tuple(rgba[offset : offset + 4])
+        original_index = original_indices[pixel]
+        if color == colors[original_index]:
+            indices.append(original_index)
+            continue
+        try:
+            indices.append(indices_by_color[color])
+        except KeyError as exc:
+            raise TmxError(
+                f"replacement color {color} is absent from texture "
+                f"{texture.index}'s existing palette"
+            ) from exc
+    if texture.psm == 0x13:
+        return bytes(indices)
+    packed = bytearray((len(indices) + 1) // 2)
+    for index, value in enumerate(indices):
+        packed[index // 2] |= value << ((index & 1) * 4)
+    return bytes(packed)
+
+
+def replace_base_image(
+    source: BundleSource,
+    texture_index: int,
+    width: int,
+    height: int,
+    rgba: bytes,
+) -> BundleSource:
+    """Replace one base image while preserving its native TMX0 profile and mips."""
+
+    if not 0 <= texture_index < len(source.textures):
+        raise TmxError(f"texture index {texture_index} is outside the bundle")
+    texture = source.textures[texture_index]
+    if (width, height) != (texture.width, texture.height):
+        raise TmxError(
+            f"replacement image is {width}x{height}, expected "
+            f"{texture.width}x{texture.height}"
+        )
+    palette_size = _palette_size(texture.psm, texture.clut_psm)
+    base_size = _base_pixel_size(texture.width, texture.height, texture.psm)
+    base = _encode_base_pixels(texture, rgba)
+    payload = (
+        texture.payload[:palette_size]
+        + base
+        + texture.payload[palette_size + base_size :]
+    )
+    textures = list(source.textures)
+    textures[texture_index] = EncodedTexture(
+        texture.index,
+        texture.width,
+        texture.height,
+        texture.psm,
+        texture.mipmap_count,
+        texture.clut_psm,
+        texture.texture_flags,
+        payload,
+    )
+    return BundleSource(tuple(textures))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -524,6 +804,11 @@ def main() -> None:
         child = subparsers.add_parser(command)
         child.add_argument("input", type=Path)
         child.add_argument("output", type=Path)
+    importer = subparsers.add_parser("import")
+    importer.add_argument("input", type=Path)
+    importer.add_argument("image", type=Path)
+    importer.add_argument("output", type=Path)
+    importer.add_argument("--texture", type=int, required=True)
     verify = subparsers.add_parser("verify")
     verify.add_argument("input", type=Path)
     args = parser.parse_args()
@@ -547,6 +832,25 @@ def main() -> None:
             args.output.write_bytes(
                 encode(parse_source(args.input.read_text(encoding="utf-8")))
             )
+        elif args.command == "import":
+            if args.input.suffix.lower() == ".tbnasm":
+                source = parse_source(args.input.read_text(encoding="utf-8"))
+            else:
+                data = args.input.read_bytes()
+                if data[8:12] != b"TXP0":
+                    raise TmxError("texture import requires a complete TBN packet")
+                source = BundleSource(_parse_bundle_records(data))
+            width, height, rgba = decode_png(args.image.read_bytes())
+            replaced = replace_base_image(
+                source, args.texture, width, height, rgba
+            )
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            if args.output.suffix.lower() == ".tbnasm":
+                args.output.write_text(
+                    render_bundle_source(replaced), encoding="utf-8"
+                )
+            else:
+                args.output.write_bytes(encode(replaced))
         elif args.command == "verify":
             data = args.input.read_bytes()
             rebuilt = encode(parse_source(render_source(data)))

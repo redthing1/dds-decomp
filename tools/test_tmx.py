@@ -82,6 +82,102 @@ class TmxTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from(">II", png, 16), (8, 8))
         self.assertEqual(texture.rgba[:4], bytes((11, 22, 33, 0xFF)))
 
+    def test_decodes_exported_png(self) -> None:
+        pixels = bytes((11, 22, 33, 0x40, 44, 55, 66, 0x80)) * 32
+        texture = tmx.parse_bundle(texture_bundle(8, 8, 0x00, pixels))[0]
+        width, height, rgba = tmx.decode_png(tmx.encode_png(texture))
+        self.assertEqual((width, height), (8, 8))
+        self.assertEqual(rgba, texture.rgba)
+
+    def test_png_import_round_trips_native_profiles(self) -> None:
+        linear_palette = b"".join(
+            bytes((index, index ^ 0x55, index ^ 0xAA, index & 0x7F))
+            for index in range(256)
+        )
+        profiles = (
+            texture_bundle(
+                8,
+                8,
+                0x00,
+                b"".join(
+                    bytes((index, index + 1, index + 2, index * 2))
+                    for index in range(64)
+                ),
+            ),
+            texture_bundle(8, 8, 0x01, bytes(range(192))),
+            texture_bundle(
+                8,
+                8,
+                0x02,
+                b"".join(struct.pack("<H", index * 997 & 0xFFFF) for index in range(64)),
+            ),
+            texture_bundle(
+                8,
+                8,
+                0x13,
+                tmx._unswizzle_psmt8_palette(linear_palette) + bytes(range(64)),
+            ),
+            texture_bundle(
+                8,
+                8,
+                0x14,
+                linear_palette[:0x40] + bytes((0x21,)) * 32,
+            ),
+        )
+        for data in profiles:
+            texture = tmx.parse_bundle(data)[0]
+            width, height, rgba = tmx.decode_png(tmx.encode_png(texture))
+            source = tmx.BundleSource(tmx._parse_bundle_records(data))
+            rebuilt = tmx.encode(
+                tmx.replace_base_image(source, 0, width, height, rgba)
+            )
+            with self.subTest(psm=texture.psm):
+                self.assertEqual(rebuilt, data)
+
+    def test_indexed_import_reuses_palette_and_preserves_mip(self) -> None:
+        palette = bytearray(0x40)
+        palette[4:8] = bytes((10, 20, 30, 0x40))
+        palette[8:12] = bytes((40, 50, 60, 0x80))
+        base = bytes((0x11,)) * 32
+        mip = bytes((0x22,)) * 8
+        data = texture_bundle(
+            8, 8, 0x14, bytes(palette) + base + mip, mipmap_count=1
+        )
+        texture = tmx.parse_bundle(data)[0]
+        rgba = bytearray(texture.rgba)
+        rgba[:4] = bytes((40, 50, 60, 0xFF))
+        source = tmx.BundleSource(tmx._parse_bundle_records(data))
+        replaced = tmx.replace_base_image(source, 0, 8, 8, bytes(rgba))
+        self.assertEqual(replaced.textures[0].payload[:0x40], bytes(palette))
+        self.assertEqual(replaced.textures[0].payload[-len(mip) :], mip)
+        decoded = tmx.parse_bundle(tmx.encode(replaced))[0]
+        self.assertEqual(decoded.rgba[:4], bytes((40, 50, 60, 0xFF)))
+
+    def test_indexed_import_preserves_duplicate_palette_indices(self) -> None:
+        data = texture_bundle(8, 8, 0x14, bytes(0x40) + bytes((0xA5,)) * 32)
+        texture = tmx.parse_bundle(data)[0]
+        source = tmx.BundleSource(tmx._parse_bundle_records(data))
+        replaced = tmx.replace_base_image(
+            source, 0, texture.width, texture.height, texture.rgba
+        )
+        self.assertEqual(tmx.encode(replaced), data)
+
+    def test_import_rejects_lossy_indexed_and_psmct24_edits(self) -> None:
+        palette = bytes(0x40)
+        indexed = texture_bundle(8, 8, 0x14, palette + bytes(32))
+        indexed_source = tmx.BundleSource(tmx._parse_bundle_records(indexed))
+        with self.assertRaisesRegex(tmx.TmxError, "absent from texture"):
+            tmx.replace_base_image(
+                indexed_source, 0, 8, 8, bytes((1, 2, 3, 4)) * 64
+            )
+
+        direct = texture_bundle(8, 8, 0x01, bytes(192))
+        direct_source = tmx.BundleSource(tmx._parse_bundle_records(direct))
+        with self.assertRaisesRegex(tmx.TmxError, "fully opaque"):
+            tmx.replace_base_image(
+                direct_source, 0, 8, 8, bytes((1, 2, 3, 4)) * 64
+            )
+
     def test_decodes_psmct24(self) -> None:
         pixels = bytes((11, 22, 33)) * (8 * 8)
         texture = tmx.parse_bundle(texture_bundle(8, 8, 0x01, pixels))[0]
