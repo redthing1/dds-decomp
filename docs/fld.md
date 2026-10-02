@@ -413,10 +413,9 @@ this represents 872 motion resources, 1,124 tracks, and 42,725 keys.
 
 Collision quads are triangulated as `(0,1,2)` and `(0,2,3)`; the retail
 `0xffffffff` fourth-index sentinel selects a single triangle. Source face
-controls remain authoritative in the FLD2 source, while mesh extras record
-face and triangle counts. Tagged polygons also appear in `ddsAutomapFaces`
-with their source face index, output triangle range, discovery block, and upper
-name selector. Unit conversion is shared with the model exporter, so both
+controls remain authoritative in the FLD2 source, while `ddsCollisionFaces`
+records every source face, its output triangle range, topology identity, and
+semantic controls. Unit conversion is shared with the model exporter, so both
 layers stay in the same coordinate space and DDS axes remain intact.
 
 The optional AMB layer adds its model geometry, sub-block hierarchy, bounds,
@@ -497,6 +496,13 @@ metadata, and channel layout against the source, so glTF cannot silently alter
 the face controls that carry automap, encounter, sound, floor, and other game
 semantics.
 
+Every `ddsCollisionFaces` row exposes the non-derived attribute flags,
+move-floor, sound, stop, place, optional automap block and upper-name pair,
+optional encounter-zone override, and two signed special values. The importer
+derives attributes `0x800` and `0x2000` from the optional semantic values and
+validates their native ranges. Face index, vertex indices, and output triangle
+range remain locked, so changing a control cannot silently change topology.
+
 The importer requires native DDS axes and editable TRS properties, rejects
 matrix nodes and identity mismatches, and validates the rebuilt FLD2 before
 writing. Coordinates and transform components that still equal the exported
@@ -514,7 +520,7 @@ layout, and `word_0c` remain authoritative in `.fldasm`; an edit that changes
 that structure is rejected. Unchanged values retain their original float bits,
 including non-unit quaternion keys whose exported rotation is normalized.
 
-Collision face topology and controls remain in `.fldasm`, where their native
+Collision face topology remains authoritative in `.fldasm`, where its native
 meaning is represented without loss. FLD1 mesh streams use the separate model
 geometry importer above; FLD1 hierarchy and animation, AMB geometry, and
 textures remain under their exact source tools. An unchanged scene imports
@@ -522,8 +528,8 @@ byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering 5,533
 collision meshes and 17,282 collision, camera, and placement transforms.
 
 Across all 1,212 tracked FLD2 files, the scene layer validates 5,533 collision
-resources and 167,623 output triangles, 1,551 cameras, 10,222 placements, and
-872 motion resources.
+resources with 86,410 source faces and 167,485 output triangles, 1,551 cameras,
+10,222 placements, and 872 motion resources.
 
 Each transform is `0x30` bytes: four position floats, four rotation floats,
 and four scale floats. Each collision object also starts with a `0x30`-byte

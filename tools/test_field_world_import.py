@@ -127,6 +127,9 @@ class FieldWorldImportTests(unittest.TestCase):
             document, primitive["attributes"]["POSITION"]
         )
         struct.pack_into("<f", binary, collision_offset, 1.25)
+        document["meshes"][collision["mesh"]]["extras"]["ddsCollisionFaces"][0][
+            "encounterZone"
+        ] = 8
 
         result = field_world_import.import_world(
             model,
@@ -138,6 +141,7 @@ class FieldWorldImportTests(unittest.TestCase):
         )
 
         self.assertEqual(result.model_summary.changed_tracks, 1)
+        self.assertEqual(result.field_summary.changed_collision_faces, 1)
         self.assertEqual(result.field_summary.translations, 1)
         self.assertEqual(result.field_summary.collision_vertices, 1)
         self.assertEqual(result.texture_summary.changed_images, 1)

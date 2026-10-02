@@ -11,6 +11,7 @@ from pathlib import Path
 
 import fld
 import fld_model
+import fld_scene
 from gltf_import import (
     GltfImportError as FieldSceneImportError,
     decode_glb,
@@ -36,6 +37,8 @@ class ImportSummary:
     motion_resources: int = 0
     motion_tracks: int = 0
     changed_motion_tracks: int = 0
+    collision_faces: int = 0
+    changed_collision_faces: int = 0
 
 
 def _resource_name(data: bytes, resource: fld.Resource) -> str:
@@ -85,14 +88,33 @@ def _pack_component(
         ) from exc
 
 
+def _metadata_integer(
+    value: object,
+    minimum: int,
+    maximum: int,
+    context: str,
+) -> int:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not minimum <= value <= maximum
+    ):
+        raise FieldSceneImportError(
+            f"{context} must be an integer in {minimum}..{maximum}"
+        )
+    return value
+
+
 def _collision_source(
     field_data: bytes,
     resource: fld.Resource,
 ) -> tuple[
     int,
+    int,
     tuple[tuple[float, float, float, float], ...],
+    tuple[tuple[int, ...], ...],
     tuple[tuple[int], ...],
-    dict[str, int | bool],
+    dict,
 ]:
     values = struct.unpack_from("<12I", field_data, resource.data)
     vertex_count, face_count, extra_count = values[4:7]
@@ -102,24 +124,156 @@ def _collision_source(
         for index in range(vertex_count)
     )
     indices: list[tuple[int]] = []
+    faces = []
+    collision_faces = []
     for face_index in range(face_count):
         face = struct.unpack_from(
             "<IBBH HBB 4I hhhh",
             field_data,
             faces_offset + face_index * fld.FACE_SIZE,
         )
+        faces.append(face)
         corners = face[7:11]
+        first_triangle = len(indices) // 3
         indices.extend((corner,) for corner in corners[:3])
         if corners[3] != 0xFFFFFFFF:
             indices.extend(((corners[0],), (corners[2],), (corners[3],)))
-    metadata: dict[str, int | bool] = {
+        collision_faces.append(
+            fld_scene._collision_face_metadata(
+                face,
+                face_index,
+                first_triangle,
+                len(indices) // 3 - first_triangle,
+            )
+        )
+    metadata = {
         "ddsVertexCount": vertex_count,
         "ddsFaceCount": face_count,
         "ddsTriangleCount": len(indices) // 3,
         "ddsExtraCount": extra_count,
         "ddsHasStopData": bool(stop),
+        "ddsCollisionFaces": collision_faces,
     }
-    return vertices_offset, vertices, tuple(indices), metadata
+    return (
+        vertices_offset,
+        faces_offset,
+        vertices,
+        tuple(faces),
+        tuple(indices),
+        metadata,
+    )
+
+
+def _import_collision_faces(
+    output: bytearray,
+    faces_offset: int,
+    source_faces: tuple[tuple[int, ...], ...],
+    value: object,
+    name: str,
+) -> int:
+    if not isinstance(value, list) or len(value) != len(source_faces):
+        raise FieldSceneImportError(
+            f"collision mesh {name!r} changes its face count"
+        )
+    changed = 0
+    allowed = {
+        "index",
+        "firstTriangle",
+        "triangleCount",
+        "flags",
+        "moveFloor",
+        "sound",
+        "stop",
+        "place",
+        "automap",
+        "vertices",
+        "encounterZone",
+        "special",
+    }
+    triangle = 0
+    for face_index, (source, actual) in enumerate(
+        zip(source_faces, value, strict=True)
+    ):
+        context = f"collision mesh {name!r} face {face_index}"
+        triangle_count = 1 if source[10] == 0xFFFFFFFF else 2
+        if (
+            not isinstance(actual, dict)
+            or set(actual) != allowed
+            or actual.get("index") != face_index
+            or actual.get("firstTriangle") != triangle
+            or actual.get("triangleCount") != triangle_count
+            or actual.get("vertices") != list(source[7:11])
+        ):
+            raise FieldSceneImportError(f"{context} changes its identity")
+        flags = _metadata_integer(
+            actual.get("flags"), 0, 0xFFFFFFFF, context + " flags"
+        )
+        if flags & (fld.AUTOMAP_ATTRIBUTE | fld.ENCOUNTER_ZONE_ATTRIBUTE):
+            raise FieldSceneImportError(
+                f"{context} flags include derived automap or encounter bits"
+            )
+        move_floor = _metadata_integer(
+            actual.get("moveFloor"), 0, 0xFF, context + " move floor"
+        )
+        sound = _metadata_integer(
+            actual.get("sound"), 0, 0xFF, context + " sound"
+        )
+        stop = _metadata_integer(actual.get("stop"), 0, 0xFFFF, context + " stop")
+        place = _metadata_integer(
+            actual.get("place"), 0, 0xFFFF, context + " place"
+        )
+        automap = actual.get("automap")
+        if automap is None:
+            block = upper_name = 0
+        elif isinstance(automap, dict) and set(automap) == {"block", "upperName"}:
+            block = _metadata_integer(
+                automap.get("block"), 1, 63, context + " automap block"
+            )
+            upper_name = _metadata_integer(
+                automap.get("upperName"),
+                1,
+                63,
+                context + " automap upper name",
+            )
+            flags |= fld.AUTOMAP_ATTRIBUTE
+        else:
+            raise FieldSceneImportError(f"{context} has invalid automap metadata")
+        encounter_zone = actual.get("encounterZone")
+        if encounter_zone is None:
+            encounter_type = zone = 0
+        else:
+            encounter_type = 1
+            zone = _metadata_integer(
+                encounter_zone, 0, 0x7FFF, context + " encounter zone"
+            )
+            flags |= fld.ENCOUNTER_ZONE_ATTRIBUTE
+        special = actual.get("special")
+        if not isinstance(special, list) or len(special) != 2:
+            raise FieldSceneImportError(f"{context} has invalid special metadata")
+        special_values = tuple(
+            _metadata_integer(item, -0x8000, 0x7FFF, context + " special")
+            for item in special
+        )
+        rebuilt = struct.pack(
+            "<IBBH HBB 4I hhhh",
+            flags,
+            move_floor,
+            sound,
+            stop,
+            place,
+            block,
+            upper_name,
+            *source[7:11],
+            encounter_type,
+            zone,
+            *special_values,
+        )
+        offset = faces_offset + face_index * fld.FACE_SIZE
+        if rebuilt != bytes(output[offset : offset + fld.FACE_SIZE]):
+            output[offset : offset + fld.FACE_SIZE] = rebuilt
+            changed += 1
+        triangle += triangle_count
+    return changed
 
 
 def _import_collision(
@@ -131,20 +285,25 @@ def _import_collision(
     binary: bytes,
     meters_per_unit: float,
     used_meshes: set[int],
-) -> tuple[int, int, int]:
-    """Import one collision mesh; return represented, changed, vertex counts."""
+) -> tuple[int, int, int, int, int]:
+    """Import one collision mesh and return mesh, vertex, and face counts."""
 
     name = _resource_name(field_data, resource)
-    vertices_offset, source_vertices, expected_indices, metadata = _collision_source(
-        field_data, resource
-    )
+    (
+        vertices_offset,
+        faces_offset,
+        source_vertices,
+        source_faces,
+        expected_indices,
+        metadata,
+    ) = _collision_source(field_data, resource)
     has_geometry = bool(source_vertices and expected_indices)
     if not has_geometry:
         if "mesh" in node:
             raise FieldSceneImportError(
                 f"collision node {name!r} exposes geometry absent from the FLD2"
             )
-        return 0, 0, 0
+        return 0, 0, 0, 0, 0
 
     meshes = document.get("meshes")
     mesh_index = node.get("mesh")
@@ -167,10 +326,20 @@ def _import_collision(
             f"collision node {name!r} has the wrong mesh identity"
         )
     extras = mesh.get("extras")
+    fixed_metadata = {
+        key: value for key, value in metadata.items() if key != "ddsCollisionFaces"
+    }
     if not isinstance(extras, dict) or any(
-        extras.get(key) != value for key, value in metadata.items()
+        extras.get(key) != value for key, value in fixed_metadata.items()
     ):
         raise FieldSceneImportError(f"collision mesh {name!r} metadata differs")
+    changed_faces = _import_collision_faces(
+        output,
+        faces_offset,
+        source_faces,
+        extras.get("ddsCollisionFaces"),
+        name,
+    )
     primitives = mesh.get("primitives")
     if (
         not isinstance(primitives, list)
@@ -248,7 +417,13 @@ def _import_collision(
             )
             changed = True
         changed_vertices += changed
-    return 1, int(bool(changed_vertices)), changed_vertices
+    return (
+        1,
+        int(bool(changed_vertices or changed_faces)),
+        changed_vertices,
+        len(source_faces),
+        changed_faces,
+    )
 
 
 def _motion_values(
@@ -578,6 +753,7 @@ def import_scene(
     changed_resources: set[tuple[int, int]] = set()
     translations = rotations = scales = 0
     collision_meshes = changed_collision_meshes = collision_vertices = 0
+    collision_faces = changed_collision_faces = 0
     motion_resources = motion_tracks = changed_motion_tracks = 0
     for node_index, node in enumerate(nodes):
         if not isinstance(node, dict):
@@ -639,7 +815,13 @@ def import_scene(
             )
 
         if resource.type_id == 3 and resource.data:
-            represented, collision_changed, vertex_changes = _import_collision(
+            (
+                represented,
+                collision_changed,
+                vertex_changes,
+                face_count,
+                face_changes,
+            ) = _import_collision(
                 field_data,
                 output,
                 resource,
@@ -652,6 +834,8 @@ def import_scene(
             collision_meshes += represented
             changed_collision_meshes += collision_changed
             collision_vertices += vertex_changes
+            collision_faces += face_count
+            changed_collision_faces += face_changes
             if collision_changed:
                 changed_resources.add(key)
         elif resource.type_id == 3 and "mesh" in node:
@@ -760,6 +944,8 @@ def import_scene(
         motion_resources,
         motion_tracks,
         changed_motion_tracks,
+        collision_faces,
+        changed_collision_faces,
     )
 
 
@@ -793,7 +979,9 @@ def main() -> None:
         f"({summary.translations} translations, {summary.rotations} rotations, "
         f"{summary.scales} scales, {summary.changed_collision_meshes} collision "
         f"meshes, {summary.collision_vertices} collision vertices, "
-        f"{summary.changed_motion_tracks} of {summary.motion_tracks} motion tracks)"
+        f"{summary.changed_collision_faces} of {summary.collision_faces} collision "
+        f"faces, {summary.changed_motion_tracks} of {summary.motion_tracks} motion "
+        "tracks)"
     )
 
 

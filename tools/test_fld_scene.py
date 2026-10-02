@@ -144,14 +144,21 @@ class FldSceneTests(unittest.TestCase):
         self.assertEqual(collision["extras"]["ddsTriangleCount"], 2)
         self.assertEqual(collision["extras"]["ddsVertexCount"], 4)
         self.assertEqual(
-            collision["extras"]["ddsAutomapFaces"],
+            collision["extras"]["ddsCollisionFaces"],
             [
                 {
-                    "face": 0,
+                    "index": 0,
                     "firstTriangle": 0,
                     "triangleCount": 2,
-                    "block": 1,
-                    "upperName": 2,
+                    "flags": 0,
+                    "moveFloor": 0,
+                    "sound": 0,
+                    "stop": 0,
+                    "place": 0,
+                    "automap": {"block": 1, "upperName": 2},
+                    "vertices": [0, 1, 2, 3],
+                    "encounterZone": 7,
+                    "special": [0, 0],
                 }
             ],
         )

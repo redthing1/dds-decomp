@@ -54,7 +54,9 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(rebuilt, self.field_data)
         self.assertEqual(
             summary,
-            fld_scene_import.ImportSummary(3, 0, 0, 0, 0, 1, 0, 0),
+            fld_scene_import.ImportSummary(
+                3, 0, 0, 0, 0, 1, 0, 0, collision_faces=1
+            ),
         )
 
     def test_imports_changed_translation_rotation_and_scale(self) -> None:
@@ -69,7 +71,9 @@ class FieldSceneImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_scene_import.ImportSummary(3, 3, 1, 1, 1, 1, 0, 0),
+            fld_scene_import.ImportSummary(
+                3, 3, 1, 1, 1, 1, 0, 0, collision_faces=1
+            ),
         )
         words, data_end, _ = fld._read_header(rebuilt)
         resources = fld._read_resources(
@@ -99,7 +103,9 @@ class FieldSceneImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_scene_import.ImportSummary(3, 1, 0, 0, 0, 1, 1, 1),
+            fld_scene_import.ImportSummary(
+                3, 1, 0, 0, 0, 1, 1, 1, collision_faces=1
+            ),
         )
         words, data_end, _ = fld._read_header(rebuilt)
         collision = next(
@@ -120,6 +126,63 @@ class FieldSceneImportTests(unittest.TestCase):
             self.field_data[vertices_offset + 12 : vertices_offset + 16],
         )
         self.assertEqual(len(rebuilt), len(self.field_data))
+        self.assertEqual(
+            fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
+        )
+
+    def test_imports_collision_face_semantics(self) -> None:
+        collision = next(
+            node for node in self.document["nodes"] if node.get("name") == "01all"
+        )
+        face = self.document["meshes"][collision["mesh"]]["extras"][
+            "ddsCollisionFaces"
+        ][0]
+        face.update(
+            {
+                "flags": 0x100,
+                "moveFloor": 2,
+                "sound": 3,
+                "stop": 4,
+                "place": 5,
+                "automap": None,
+                "encounterZone": 8,
+                "special": [-2, 3],
+            }
+        )
+
+        rebuilt, summary = fld_scene_import.import_scene(
+            self.field_data, self.document, bytes(self.binary)
+        )
+
+        self.assertEqual(
+            summary,
+            fld_scene_import.ImportSummary(
+                3,
+                1,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                collision_faces=1,
+                changed_collision_faces=1,
+            ),
+        )
+        words, data_end, _ = fld._read_header(rebuilt)
+        resource = next(
+            resource
+            for resource in fld._read_resources(
+                rebuilt, fld._read_types(rebuilt, words, data_end)
+            )
+            if resource.type_id == 3
+        )
+        faces_offset = struct.unpack_from("<12I", rebuilt, resource.data)[8]
+        values = struct.unpack_from("<IBBH HBB 4I hhhh", rebuilt, faces_offset)
+        self.assertEqual(values[0], 0x2100)
+        self.assertEqual(values[1:7], (2, 3, 4, 5, 0, 0))
+        self.assertEqual(values[7:11], (0, 1, 2, 3))
+        self.assertEqual(values[11:15], (1, 8, -2, 3))
         self.assertEqual(
             fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
         )
@@ -277,6 +340,30 @@ class FieldSceneImportTests(unittest.TestCase):
         struct.pack_into("<f", self.binary, position_offset, math.nan)
         with self.assertRaisesRegex(
             fld_scene_import.FieldSceneImportError, "non-finite vertex"
+        ):
+            fld_scene_import.import_scene(
+                self.field_data, self.document, bytes(self.binary)
+            )
+
+    def test_rejects_collision_face_identity_and_derived_flags(self) -> None:
+        collision = next(
+            node for node in self.document["nodes"] if node.get("name") == "01all"
+        )
+        face = self.document["meshes"][collision["mesh"]]["extras"][
+            "ddsCollisionFaces"
+        ][0]
+        face["vertices"][0] = 1
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "changes its identity"
+        ):
+            fld_scene_import.import_scene(
+                self.field_data, self.document, bytes(self.binary)
+            )
+
+        face["vertices"][0] = 0
+        face["flags"] = fld.AUTOMAP_ATTRIBUTE
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "include derived"
         ):
             fld_scene_import.import_scene(
                 self.field_data, self.document, bytes(self.binary)
