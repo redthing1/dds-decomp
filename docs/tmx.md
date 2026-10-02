@@ -52,14 +52,14 @@ gate.
 
 A field TBN is a normal eight-byte SDF resource packet followed by TXP0. TXP0
 contains a texture count and file-relative offsets to ordered type-2 TMX0
-packets. Model asset fields `resource_04` and `resource_20` select entries in
-that order. The TMX0 image header is `0x38` bytes from its magic through the
-start of image data; including the child packet header, pixel data begins at
-offset `0x40`.
+packets. Model material fields `primary_texture` and `secondary_texture`
+select entries in that order. The TMX0 image header is `0x38` bytes from its
+magic through the start of image data; including the child packet header,
+pixel data begins at offset `0x40`.
 
 The complete DDS1 and DDS2 field corpora contain 1,117 bundles and 15,506
 textures. One DDS2 bundle is intentionally empty. All 154,642 texture
-references in archived FLD1 material assets resolve within the corresponding
+references in archived FLD1 materials resolve within the corresponding
 bundle.
 
 ## Pixel profiles

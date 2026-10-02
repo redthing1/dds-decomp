@@ -367,7 +367,7 @@ def _add_animations(
             "extras": {
                 "ddsDurationFrames": clip.duration,
                 "ddsReserved": clip.reserved,
-                "ddsIgnoredAssetBindings": sum(
+                "ddsIgnoredMaterialBindings": sum(
                     binding.family == 1 for binding in motion.bindings
                 ),
             },
@@ -478,7 +478,7 @@ def add_model_graph(
     data: bytes,
     name: str,
     items: tuple[fld.ModelItem, ...],
-    assets: tuple[fld.ModelAsset, ...],
+    materials: tuple[fld.ModelMaterial, ...],
     draw_roots: dict[int, tuple[int, ...]],
     draw_lists: dict[int, fld.ModelDrawList],
     draws: dict[int, fld.ModelDraw],
@@ -498,64 +498,79 @@ def add_model_graph(
     material_cache: dict[tuple[int, bool], int] = {}
 
     def material_for(
-        asset_index: int, translucent_vertices: bool, has_texcoords: bool
+        material_index: int, translucent_vertices: bool, has_texcoords: bool
     ) -> int:
-        if textures is None:
-            return default_material
-        key = asset_index, has_texcoords
+        key = material_index, has_texcoords
         old = material_cache.get(key)
         if old is not None:
             if translucent_vertices:
                 builder.document["materials"][old]["alphaMode"] = "BLEND"
             return old
 
-        asset = assets[asset_index]
-        fields = dict(asset.fields)
+        source_material = materials[material_index]
+        fields = dict(source_material.fields)
+        variant = "textured" if has_texcoords else "untextured"
         material = {
-            "name": f"{name}/asset_{asset_index}",
+            "name": f"{name}/material_{material_index}/{variant}",
             "doubleSided": True,
             "pbrMetallicRoughness": {
                 "metallicFactor": 0.0,
                 "roughnessFactor": 1.0,
             },
-            "extras": {"ddsAssetFlags": asset.flags},
+            "extras": {
+                "ddsModelGraph": name,
+                "ddsMaterialIndex": material_index,
+                "ddsMaterialFlags": source_material.flags,
+                "ddsMaterialFields": {
+                    field_name: list(values)
+                    for field_name, values in source_material.fields
+                },
+            },
         }
         translucent = translucent_vertices
-        if "resource_04" in fields:
-            source_index = int(fields["resource_04"][0])
-            material["extras"]["ddsPrimaryTexture"] = source_index
-            if source_index < 0 or source_index >= len(textures):
+        if "primary_texture" in fields:
+            source_index = int(fields["primary_texture"][0])
+            if textures is not None and not 0 <= source_index < len(textures):
                 raise fld.FldError(
-                    f"model {name} asset {asset_index} references texture "
+                    f"model {name} material {material_index} references texture "
                     f"{source_index}, but the bundle has {len(textures)} textures"
                 )
-            if has_texcoords:
+            if textures is not None and has_texcoords:
                 texture_index, texture_translucent = _gltf_texture(
                     builder,
                     textures,
                     texture_cache,
                     source_index,
-                    f"model {name} asset {asset_index}",
+                    f"model {name} material {material_index}",
                 )
                 material["pbrMetallicRoughness"]["baseColorTexture"] = {
                     "index": texture_index
                 }
                 translucent |= texture_translucent
-        if "resource_20" in fields:
-            secondary, mode = fields["resource_20"]
-            if secondary < 0 or secondary >= len(textures):
+        if "secondary_texture" in fields:
+            secondary, _mode = fields["secondary_texture"]
+            if textures is not None and not 0 <= secondary < len(textures):
                 raise fld.FldError(
-                    f"model {name} asset {asset_index} references secondary "
+                    f"model {name} material {material_index} references secondary "
                     f"texture {secondary}, but the bundle has {len(textures)} textures"
                 )
-            material["extras"]["ddsSecondaryTexture"] = int(secondary)
-            material["extras"]["ddsSecondaryTextureMode"] = int(mode)
         if translucent:
             material["alphaMode"] = "BLEND"
-        material_index = len(builder.document["materials"])
-        builder.document["materials"].append(material)
-        material_cache[key] = material_index
-        return material_index
+        default_extras = builder.document["materials"][default_material].get(
+            "extras", {}
+        )
+        if (
+            textures is None
+            and not material_cache
+            and "ddsMaterialIndex" not in default_extras
+        ):
+            gltf_material_index = default_material
+            builder.document["materials"][gltf_material_index] = material
+        else:
+            gltf_material_index = len(builder.document["materials"])
+            builder.document["materials"].append(material)
+        material_cache[key] = gltf_material_index
+        return gltf_material_index
 
     def item_mesh(item: fld.ModelItem) -> int | None:
         if not item.commands:
@@ -599,13 +614,13 @@ def add_model_graph(
                             "attributes": attributes,
                             "indices": indices,
                             "material": material_for(
-                                draw.asset,
+                                draw.material,
                                 translucent_vertices,
                                 mesh.texcoords is not None,
                             ),
                             "mode": 4,
                             "extras": {
-                                "ddsAsset": draw.asset,
+                                "ddsMaterial": draw.material,
                                 "ddsDrawSelector": draw_list.selector,
                                 "ddsDrawListIndex": list_index,
                                 "ddsDrawIndex": draw_index,
@@ -711,8 +726,8 @@ def build_gltf(
         model, items = fld._read_model_resource(
             data, resource.data, data_end, f"model {name}"
         )
-        assets = fld._read_model_assets(
-            data, model.assets, data_end, f"model {name} assets"
+        materials = fld._read_model_materials(
+            data, model.materials, data_end, f"model {name} materials"
         )
         motion = fld._read_model_motion(
             data,
@@ -720,13 +735,13 @@ def build_gltf(
             data_end,
             relocations,
             len(items),
-            len(assets),
+            len(materials),
             f"model {name} motion",
         )
         draw_roots, draw_lists, draws = fld._read_model_draw_graph(
             data,
             items,
-            len(assets),
+            len(materials),
             data_end,
             relocations,
             f"model {name}",
@@ -736,7 +751,7 @@ def build_gltf(
             data,
             name,
             items,
-            assets,
+            materials,
             draw_roots,
             draw_lists,
             draws,
@@ -752,7 +767,11 @@ def build_gltf(
                 "ddsMotionBindings": [
                     {
                         "family": fld.MODEL_MOTION_FAMILIES[binding.family],
-                        "selector": binding.selector,
+                        "selector": (
+                            fld.MODEL_MOTION_NODE_SELECTORS[binding.selector]
+                            if binding.family == 0
+                            else fld.MODEL_MOTION_MATERIAL_SELECTORS[binding.selector]
+                        ),
                         "target": binding.target,
                         "format": fld.MODEL_MOTION_FORMATS[
                             binding.family, binding.selector
@@ -812,6 +831,8 @@ def build_gltf(
         "ddsFramesPerSecond": frames_per_second,
         "ddsNativeAxesPreserved": True,
     }
+    if textures is not None:
+        builder.document["asset"]["extras"]["ddsTextureCount"] = len(textures)
     return builder.document, bytes(builder.binary)
 
 

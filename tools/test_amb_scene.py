@@ -46,7 +46,7 @@ model_draw_set lists=@draw_list
 label draw_list
 model_draw_list selector=2 draws=@draw
 label draw
-model_draw asset=0 qwords=4 packet=@packet
+model_draw material=0 qwords=4 packet=@packet
 label packet
 mesh_header triangles=1 vertices=3 controls=0x1878,0x0360
 mesh_triangles
@@ -55,8 +55,8 @@ mesh_positions
 position 0,0,0 100,0,0 0,100,0
 mesh_program address=12
 label material
-model_assets count=1
-model_asset index=0
+model_materials count=1
+model_material index=0
 label area_position
 vec3 1 2 3
 label data_end
@@ -92,7 +92,7 @@ class AmbSceneTests(unittest.TestCase):
         self.assertEqual(wrapper["extras"]["ddsSubBlocks"][0]["floor"], -2)
         self.assertEqual(wrapper["extras"]["ddsAreaRootNode"], 0)
         self.assertEqual(
-            wrapper["extras"]["ddsAssets"],
+            wrapper["extras"]["ddsMaterials"],
             [{"index": 0, "flags": 0}],
         )
         self.assertEqual(document["scenes"][0]["nodes"], [2])
@@ -138,7 +138,10 @@ class AmbSceneTests(unittest.TestCase):
 
         self.assertEqual(document["nodes"][0]["name"], "existing")
         self.assertEqual(document["materials"][0], original_material)
-        self.assertEqual(document["materials"][1]["name"], "AMB geometry")
+        self.assertEqual(
+            document["materials"][1]["name"],
+            "area_001/material_0/untextured",
+        )
         self.assertEqual(document["materials"][2]["name"], "AMB icon")
         automap_primitive = document["meshes"][1]["primitives"][0]
         self.assertEqual(automap_primitive["material"], 1)

@@ -110,19 +110,19 @@ FLD1 additionally uses these typed forms:
 
 | Type | Source form | Contents currently recovered |
 |---:|---|---|
-| `2` | `model_resource`, `model_items`, `model_item`, `model_bounds`, `model_assets`, `model_asset`, `model_draw_set`, `model_draw_list`, `model_draw`, mesh directives | Field model hierarchy, material assets, render commands, and VIF mesh streams |
+| `2` | `model_resource`, `model_items`, `model_item`, `model_bounds`, `model_materials`, `model_material`, `model_draw_set`, `model_draw_list`, `model_draw`, mesh directives | Field model hierarchy, materials, render commands, and VIF mesh streams |
 | `5` | `texture_list` | Referenced field texture-list filename |
 | `11` | `effect` | Effect kind, resource selector, size, and parameters |
 | `12` | `light` | Animation mode, radii, softness, bias, diffuse RGB, and ambient RGB |
 
 Types `3` and `9` use the same collision and motion forms in both files.
 
-Each type-2 resource owns a model-item list and refers to its shared asset and
-motion definitions:
+Each type-2 resource owns a model-item list and refers to its shared material
+and motion definitions:
 
 ```text
 model_resource items=@md_01all_02_items \
-  assets=@md_01all_02_assets motion=@md_01all_02_motion
+  materials=@md_01all_02_materials motion=@md_01all_02_motion
 
 label md_01all_02_items
 model_items count=131
@@ -142,7 +142,7 @@ model_draw_set lists=@md_01all_02_node_2_draws_list_0
 label md_01all_02_node_2_draws_list_0
 model_draw_list selector=2 draws=@md_01all_02_node_2_draws_list_0_draw_0
 label md_01all_02_node_2_draws_list_0_draw_0
-model_draw asset=1 qwords=7 \
+model_draw material=1 qwords=7 \
   packet=@md_01all_02_node_2_draws_list_0_draw_0_packet
 
 label md_01all_02_node_2_draws_list_0_draw_0_packet
@@ -169,7 +169,7 @@ rendering slots for that node.
 A `model_draw_set` is the node's null-terminated sequence of command lists.
 Each `model_draw_list` supplies a rendering selector and an ordered sequence of
 draws. The retail version-23 field corpus uses opcode 1 for every one of these
-draws: `asset` selects the model's material state, `qwords` gives the exact
+draws: `material` selects the model's material state, `qwords` gives the exact
 size of the referenced packet, and the packet contains one or more meshes.
 
 Each mesh starts with its triangle and vertex counts plus two preserved control
@@ -185,61 +185,69 @@ boundary.
 `packet_data` remains accepted for older source files containing this known
 packet profile. Newly disassembled source uses the mesh form.
 
-The variable-length asset table is also structural source:
+The variable-length material table is semantic source:
 
 ```text
-model_assets count=24
-model_asset index=0 word_01=0x80969696 word_02=0x80969696
-model_asset index=1 word_02=0x20808080 resource_04=0 \
-  values_08=0,0,1,0.5,0 word_10=0x207f7f7f resource_20=0,1 \
-  values_40=0,0,0.5,1,0 scalar_200=0.9
+model_materials count=24
+model_material index=0 color_0=150,150,150,128 \
+  color_1=150,150,150,128
+model_material index=1 color_1=128,128,128,32 primary_texture=0 \
+  primary_uv_transform=0,0,1,0.5,0 color_2=127,127,127,32 \
+  secondary_texture=0,1 secondary_uv_transform=0,0,0.5,1,0 scalar=0.9
 ```
 
-An asset's optional field suffix is its serialized flag bit. `resource_04`
-indexes the resource list supplied by the model owner; `resource_20` stores
-that index with its associated 16-bit value. The assembler derives the flag mask
-from the fields present. It also derives the zero reserved words and checks
-asset indices, command pointers, packet sizes, and relocation sites.
+The five `color_N` fields are packed RGBA bytes in render-packet order. Their
+ordinal names avoid assigning an unproven lighting role. `primary_texture` is a
+texture-list index. `secondary_texture` contains its texture-list index and
+16-bit mode. Each five-float UV transform supplies two origin terms, two scale
+terms, and a rotation to the runtime transform builder. `scalar` and
+`scalar_pair` name the remaining float slots without inventing their rendering
+roles. The assembler derives the material flag mask from the fields present,
+including reserved padding, and checks material indices, command pointers,
+packet sizes, and relocation sites.
 
 All 7,125 type-2 resources and 98,442 model items in the two version-23 disc
-corpora use this same profile. Together they contain 161,220 asset entries,
+corpora use this same profile. Together they contain 161,220 materials,
 86,571 draw sets, 94,520 command lists, and 140,113 typed draws. The draw
 packets contain 904,770 meshes, 12,648,890 triangles, and 30,426,410 vertices.
 All DDS1 meshes select program address 12. DDS2 has 503,825 at address 12 and
-221 at address 16.
-Their fixed VIF commands, control and padding words are derived or checked by
-the parser.
+221 at address 16. Their fixed VIF commands, control words, and padding are
+derived or checked by the parser.
 
-Model motion is a playbook shared by every animated node and asset in one model:
+Model motion is a playbook shared by every animated node and material in one
+model:
 
 ```text
 model_motion_playbook clip_count=1 bindings=5 clips=@motion_clips
 model_motion_binding family=node selector=translation target=11
 model_motion_binding family=node selector=scale target=11
 model_motion_binding family=node selector=quaternion target=11
-model_motion_binding family=asset selector=2 target=46
-model_motion_binding family=asset selector=2 target=47
-
-label motion_clips
-model_motion_clip_table clips=@motion_clip_0
-
-label motion_clip_0
-model_motion_clip duration=60 reserved=0
-model_motion_track format=vector3 frames=0
-motion_vector3 140135.203125,-309.505859375,12446.6611328125
-model_motion_track format=vector3 frames=0
-motion_vector3 1.0399997234344482,1.0,0.9999998807907104
-model_motion_track format=quaternion_s16 frames=0
-motion_quaternion_s16 0,-356,0,4080
+model_motion_binding family=material selector=primary_uv_transform_linear target=46
+model_motion_binding family=material selector=color_2 target=47
 ```
 
 The high and low halves of each binding command select its target family and
-channel. Node channels have names because their runtime effects are established;
-asset selectors remain numeric where the property name is not. Each non-null
-clip contains one size-prefixed key track per binding, in binding order. The
-assembler derives the track size, key count, stride, frame padding, packed
-command word, and all playbook relocations. It checks node and asset targets
-against the model tables.
+channel. Node selectors are translation, Euler rotation, scale, packed
+quaternion, and a bit-valued flag. The retail material dispatch table establishes
+all ten material selectors:
+
+| Selector | Material target | Key behavior |
+|---:|---|---|
+| `0` | `color_1` | RGBA interpolation |
+| `1` | `color_0` | RGBA interpolation |
+| `2` | `primary_uv_transform_linear` | five-float interpolation |
+| `3` | `secondary_uv_transform_linear` | five-float interpolation |
+| `4` | `color_2` | RGBA interpolation |
+| `5` | `scalar` | float interpolation |
+| `6` | `primary_uv_transform_step` | direct five-float key selection |
+| `7` | `secondary_uv_transform_step` | direct five-float key selection |
+| `8` | `color_3` | RGBA interpolation |
+| `9` | `color_4` | RGBA interpolation |
+
+Each non-null clip contains one size-prefixed key track per binding, in binding
+order. The assembler derives the track size, key count, stride, frame padding,
+packed command word, and all playbook relocations. It checks node and material
+targets against their model tables.
 
 Track payloads use the shape required by their binding: XYZ floats, packed
 signed-16 quaternions, byte flags, RGBA bytes, one float, or five floats. Frame
@@ -270,7 +278,7 @@ python3 tools/fld_model.py extracted/f011_001.LB model.glb \
 the exporter writes every type-2 model in the FLD1. An LB input supplies its
 paired F1 model and TBN texture bundle directly. A loose F1 binary or source
 accepts the same bundle with `--texture-bundle`. The GLB embeds only textures
-used by exported model assets; see [`tmx.md`](tmx.md) for their physical
+used by exported model materials; see [`tmx.md`](tmx.md) for their physical
 format and standalone PNG decoder.
 
 The GLB retains the model
@@ -284,8 +292,8 @@ untextured material variant because glTF requires `TEXCOORD_0` for a bound
 texture; its DDS texture identity remains in material metadata. Translation,
 scale, Euler-rotation, and packed-quaternion node tracks become glTF animation
 channels. Every motion binding and clip remains summarized on the resource
-node; asset-property tracks are not converted to animation channels because
-their material meanings are not yet established.
+node; material-property tracks are not converted to animation channels because
+glTF core has no channels for these DDS properties.
 
 The two conversion options are explicit rather than assumed. Their defaults of
 one preserve the numeric DDS units and frame values; choose the scale and
@@ -300,18 +308,23 @@ Across the archived field corpus, every one of the 150,694 primary and 3,948
 secondary material texture references resolves inside its paired TBN bundle.
 This covers 3,656 DDS1 and 3,415 DDS2 model resources.
 
-### Model geometry import
+### Model geometry and material import
 
-`tools/fld_model_import.py` applies edited vertex streams from an exported GLB
-back to an FLD1 binary or source file:
+`tools/fld_model_import.py` applies edited material parameters and vertex
+streams from an exported GLB back to an FLD1 binary or source file:
 
 ```sh
 python3 tools/fld_model_import.py edited-model.glb \
   src/dds1/data/field/f011_001.f1asm edited-f011_001.f1asm
 ```
 
-The importer accepts changes to positions, normals, texture coordinates, the
-unclassified four-float vertex attribute, and vertex colors. Positions are
+Each exported glTF material carries its native index, flag mask, and semantic
+DDS fields in `extras.ddsMaterialFields`. The importer accepts changes to the
+five RGBA channels, both texture references and UV transforms, the scalar and
+scalar pair. Changing a texture reference requires a GLB exported with its TBN
+bundle so the importer can reject indices outside that bundle. It also accepts
+changes to positions, normals, texture coordinates,
+the unclassified four-float vertex attribute, and vertex colors. Positions are
 converted back through the unit scale recorded by the exporter. Colors are
 converted from glTF's normalized 0..255 representation to the DDS 0..128
 range. Components that still equal the exported values retain their original

@@ -72,9 +72,9 @@ class Icon:
 @dataclass(frozen=True)
 class ModelGraph:
     items_offset: int
-    assets_offset: int
+    materials_offset: int
     items: tuple[fld.ModelItem, ...]
-    assets: tuple[fld.ModelAsset, ...]
+    materials: tuple[fld.ModelMaterial, ...]
     draw_roots: dict[int, tuple[int, ...]]
     draw_lists: dict[int, fld.ModelDrawList]
     draws: dict[int, fld.ModelDraw]
@@ -309,8 +309,8 @@ def decode(data: bytes) -> AmbFile:
                         f"area {area_index} sub-block {sblock_index} references "
                         f"model node {sblock.node}, but the model has {len(items)} nodes"
                     )
-            assets = fld._read_model_assets(
-                data, material, data_end, f"area {area_index} model assets"
+            materials = fld._read_model_materials(
+                data, material, data_end, f"area {area_index} model materials"
             )
             for item_index, item in enumerate(items):
                 item_offset = (
@@ -336,7 +336,7 @@ def decode(data: bytes) -> AmbFile:
             draw_roots, draw_lists, draws = fld._read_model_draw_graph(
                 data,
                 items,
-                len(assets),
+                len(materials),
                 data_end,
                 relocations,
                 f"area {area_index} model",
@@ -363,7 +363,7 @@ def decode(data: bytes) -> AmbFile:
                 geometry,
                 material,
                 items,
-                assets,
+                materials,
                 draw_roots,
                 draw_lists,
                 draws,
@@ -572,29 +572,26 @@ def render_source(data: bytes) -> str:
                 f"{stem} model node {node_index} bounds",
             )
 
-        asset_lines = [f"model_assets count={len(graph.assets)}"]
-        for asset in graph.assets:
-            fields = [f"index={asset.index}"]
-            for field_name, values in asset.fields:
+        material_lines = [f"model_materials count={len(graph.materials)}"]
+        for material in graph.materials:
+            fields = [f"index={material.index}"]
+            for field_name, values in material.fields:
                 if field_name in {
-                    "values_08",
-                    "values_40",
-                    "scalar_100",
-                    "scalar_200",
-                    "pair_400",
+                    "primary_uv_transform",
+                    "secondary_uv_transform",
+                    "scalar",
+                    "scalar_pair",
                 }:
                     text = ",".join(fld._float_text(value) for value in values)
-                elif field_name in {"word_01", "word_02", "word_10", "word_80"}:
-                    text = ",".join(f"0x{value:08x}" for value in values)
                 else:
                     text = ",".join(str(value) for value in values)
                 fields.append(f"{field_name}={text}")
-            asset_lines.append("model_asset " + " ".join(fields))
+            material_lines.append("model_material " + " ".join(fields))
         add_span(
-            graph.assets_offset,
-            4 + sum(asset.size for asset in graph.assets),
-            asset_lines,
-            f"{stem} model assets",
+            graph.materials_offset,
+            4 + sum(material.size for material in graph.materials),
+            material_lines,
+            f"{stem} model materials",
         )
 
         for root_offset, list_offsets in graph.draw_roots.items():
@@ -624,7 +621,7 @@ def render_source(data: bytes) -> str:
                 fld.MODEL_DRAW_SIZE,
                 [
                     "model_draw "
-                    f"asset={draw.asset} qwords={draw.quadwords} "
+                    f"material={draw.material} qwords={draw.quadwords} "
                     f"packet=@{labels[draw.packet]}"
                 ],
                 f"{stem} model draw",

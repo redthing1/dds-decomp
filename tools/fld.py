@@ -70,29 +70,29 @@ STATIC_MODEL_DIRECTIVES = {
     "model_items",
     "model_item",
     "model_bounds",
-    "model_assets",
-    "model_asset",
+    "model_materials",
+    "model_material",
     "model_draw_set",
     "model_draw_list",
     "model_draw",
     "packet_data",
 } | MESH_PACKET_DIRECTIVES
-MODEL_ASSET_FIELDS = (
-    (0x001, "word_01", "u32", 1),
-    (0x002, "word_02", "u32", 1),
-    (0x004, "resource_04", "resource", 1),
-    (0x008, "values_08", "float", 5),
-    (0x010, "word_10", "u32", 1),
-    (0x020, "resource_20", "resource_pair", 2),
-    (0x040, "values_40", "float", 5),
-    (0x080, "word_80", "u32", 1),
-    (0x100, "scalar_100", "float", 1),
-    (0x200, "scalar_200", "float", 1),
-    (0x400, "pair_400", "float", 2),
+MODEL_MATERIAL_FIELDS = (
+    (0x001, "color_0", "rgba8", 4),
+    (0x002, "color_1", "rgba8", 4),
+    (0x004, "primary_texture", "resource", 1),
+    (0x008, "primary_uv_transform", "float", 5),
+    (0x010, "color_2", "rgba8", 4),
+    (0x020, "secondary_texture", "resource_pair", 2),
+    (0x040, "secondary_uv_transform", "float", 5),
+    (0x080, "color_3", "rgba8", 4),
+    (0x100, "color_4", "rgba8", 4),
+    (0x200, "scalar", "float", 1),
+    (0x400, "scalar_pair", "float", 2),
 )
-MODEL_ASSET_FIELD_NAMES = {name for _, name, _, _ in MODEL_ASSET_FIELDS}
-MODEL_ASSET_FLAG_MASK = sum(bit for bit, _, _, _ in MODEL_ASSET_FIELDS)
-MODEL_MOTION_FAMILIES = {0: "node", 1: "asset"}
+MODEL_MATERIAL_FIELD_NAMES = {name for _, name, _, _ in MODEL_MATERIAL_FIELDS}
+MODEL_MATERIAL_FLAG_MASK = sum(bit for bit, _, _, _ in MODEL_MATERIAL_FIELDS)
+MODEL_MOTION_FAMILIES = {0: "node", 1: "material"}
 MODEL_MOTION_FAMILY_IDS = {name: value for value, name in MODEL_MOTION_FAMILIES.items()}
 MODEL_MOTION_NODE_SELECTORS = {
     0: "translation",
@@ -103,6 +103,21 @@ MODEL_MOTION_NODE_SELECTORS = {
 }
 MODEL_MOTION_NODE_SELECTOR_IDS = {
     name: value for value, name in MODEL_MOTION_NODE_SELECTORS.items()
+}
+MODEL_MOTION_MATERIAL_SELECTORS = {
+    0: "color_1",
+    1: "color_0",
+    2: "primary_uv_transform_linear",
+    3: "secondary_uv_transform_linear",
+    4: "color_2",
+    5: "scalar",
+    6: "primary_uv_transform_step",
+    7: "secondary_uv_transform_step",
+    8: "color_3",
+    9: "color_4",
+}
+MODEL_MOTION_MATERIAL_SELECTOR_IDS = {
+    name: value for value, name in MODEL_MOTION_MATERIAL_SELECTORS.items()
 }
 MODEL_MOTION_FORMATS = {
     (0, 0): ("vector3", 12),
@@ -202,7 +217,7 @@ class ModelResource:
     reserved_08: int
     reserved_0c: int
     items: int
-    assets: int
+    materials: int
     slot_count: int
     parameter: int
     motion: int
@@ -224,17 +239,19 @@ class ModelItem:
 
 
 @dataclass(frozen=True)
-class ModelAsset:
+class ModelMaterial:
+    offset: int
     index: int
     flags: int
     fields: tuple[tuple[str, tuple[int | float, ...]], ...]
+    field_offsets: tuple[tuple[str, int], ...]
     size: int
 
 
 @dataclass(frozen=True)
 class ModelDraw:
     offset: int
-    asset: int
+    material: int
     quadwords: int
     packet: int
 
@@ -484,8 +501,8 @@ def _read_model_resource(
         raise FldError(f"{context} has an unsupported model-resource profile")
     if not resource.items:
         raise FldError(f"{context} has no model-item list")
-    if not resource.assets or not resource.motion:
-        raise FldError(f"{context} has a null asset or motion definition")
+    if not resource.materials or not resource.motion:
+        raise FldError(f"{context} has a null material or motion definition")
 
     return resource, _read_model_items(data, resource.items, data_end, context)
 
@@ -570,46 +587,48 @@ def _read_model_items(
     return tuple(items)
 
 
-def _read_model_assets(
+def _read_model_materials(
     data: bytes, offset: int, data_end: int, context: str
-) -> tuple[ModelAsset, ...]:
+) -> tuple[ModelMaterial, ...]:
     _data_range(data, offset, 4, data_end, context)
     count = _u32(data, offset, context + " count")
     cursor = offset + 4
-    assets = []
+    materials = []
     for index in range(count):
-        _data_range(data, cursor, 8, data_end, context + f" asset {index}")
+        _data_range(data, cursor, 8, data_end, context + f" material {index}")
         entry_start = cursor
         identifier, reserved, flags = struct.unpack_from("<IHH", data, cursor)
         cursor += 8
         if identifier != index:
             raise FldError(
-                f"{context} asset {index} has identifier {identifier}"
+                f"{context} material {index} has identifier {identifier}"
             )
         if reserved != 0:
-            raise FldError(f"{context} asset {index} has a nonzero reserved word")
-        if flags & ~MODEL_ASSET_FLAG_MASK:
+            raise FldError(f"{context} material {index} has a nonzero reserved word")
+        if flags & ~MODEL_MATERIAL_FLAG_MASK:
             raise FldError(
-                f"{context} asset {index} has unsupported flags 0x{flags:x}"
+                f"{context} material {index} has unsupported flags 0x{flags:x}"
             )
 
         fields = []
-        for bit, name, kind, width in MODEL_ASSET_FIELDS:
+        field_offsets = []
+        for bit, name, kind, width in MODEL_MATERIAL_FIELDS:
             if not flags & bit:
                 continue
-            size = 4 if kind in {"resource", "resource_pair"} else width * 4
+            size = 4 if kind in {"rgba8", "resource", "resource_pair"} else width * 4
             _data_range(
-                data, cursor, size, data_end, context + f" asset {index} {name}"
+                data, cursor, size, data_end, context + f" material {index} {name}"
             )
-            if kind == "u32":
-                values = struct.unpack_from("<" + "I" * width, data, cursor)
+            field_offsets.append((name, cursor))
+            if kind == "rgba8":
+                values = struct.unpack_from("<4B", data, cursor)
             elif kind == "float":
                 values = struct.unpack_from("<" + "f" * width, data, cursor)
             elif kind == "resource":
                 resource_index, padding = struct.unpack_from("<HH", data, cursor)
                 if padding != 0:
                     raise FldError(
-                        f"{context} asset {index} {name} has nonzero padding"
+                        f"{context} material {index} {name} has nonzero padding"
                     )
                 values = (resource_index,)
             elif kind == "resource_pair":
@@ -618,8 +637,17 @@ def _read_model_assets(
                 raise AssertionError(kind)
             fields.append((name, values))
             cursor += size
-        assets.append(ModelAsset(index, flags, tuple(fields), cursor - entry_start))
-    return tuple(assets)
+        materials.append(
+            ModelMaterial(
+                entry_start,
+                index,
+                flags,
+                tuple(fields),
+                tuple(field_offsets),
+                cursor - entry_start,
+            )
+        )
+    return tuple(materials)
 
 
 def _model_motion_format(family: int, selector: int, context: str) -> tuple[str, int]:
@@ -637,7 +665,7 @@ def _read_model_motion(
     data_end: int,
     relocations: set[int],
     node_count: int,
-    asset_count: int,
+    material_count: int,
     context: str,
 ) -> ModelMotionPlaybook:
     """Read the model motion playbook and its size-prefixed key tracks."""
@@ -661,7 +689,7 @@ def _read_model_motion(
         command, target = struct.unpack_from("<II", data, offset + 8 + index * 8)
         family, selector = command >> 16, command & 0xFFFF
         _model_motion_format(family, selector, context + f" binding {index}")
-        target_count = node_count if family == 0 else asset_count
+        target_count = node_count if family == 0 else material_count
         if target >= target_count:
             raise FldError(
                 f"{context} binding {index} targets {target}, but family "
@@ -737,7 +765,7 @@ def _read_model_motion(
 def _read_model_draw_graph(
     data: bytes,
     items: tuple[ModelItem, ...],
-    asset_count: int,
+    material_count: int,
     data_end: int,
     relocations: set[int],
     context: str,
@@ -812,11 +840,11 @@ def _read_model_draw_graph(
                     raise FldError(f"{context} draw packet pointer is not relocated")
                 if reserved != 0:
                     raise FldError(f"{context} draw has a nonzero reserved word")
-                quadwords, asset = packed & 0xFFFF, packed >> 16
-                if asset >= asset_count:
+                quadwords, material = packed & 0xFFFF, packed >> 16
+                if material >= material_count:
                     raise FldError(
-                        f"{context} draw selects asset {asset}, but only "
-                        f"{asset_count} assets exist"
+                        f"{context} draw selects material {material}, but only "
+                        f"{material_count} materials exist"
                     )
                 _data_range(
                     data,
@@ -826,7 +854,7 @@ def _read_model_draw_graph(
                     context + " draw packet",
                 )
                 draws[draw_offset] = ModelDraw(
-                    draw_offset, asset, quadwords, packet
+                    draw_offset, material, quadwords, packet
                 )
             lists[list_offset] = ModelDrawList(
                 list_offset, selector, tuple(draw_offsets)
@@ -1038,11 +1066,11 @@ def validate(data: bytes) -> None:
             model_resource, items = _read_model_resource(
                 data, resource.data, data_end, "field model"
             )
-            assets = _read_model_assets(
+            materials = _read_model_materials(
                 data,
-                _u32(data, resource.data + 0x14, "field model asset pointer"),
+                _u32(data, resource.data + 0x14, "field model material pointer"),
                 data_end,
-                "field model assets",
+                "field model materials",
             )
             _read_model_motion(
                 data,
@@ -1050,13 +1078,13 @@ def validate(data: bytes) -> None:
                 data_end,
                 relocations,
                 len(items),
-                len(assets),
+                len(materials),
                 "field model motion",
             )
             _, _, draws = _read_model_draw_graph(
                 data,
                 items,
-                len(assets),
+                len(materials),
                 data_end,
                 relocations,
                 "field model",
@@ -1295,14 +1323,14 @@ def _references(text: str) -> tuple[str, ...]:
     return references
 
 
-def _model_asset_source_fields(operation: Operation) -> dict[str, str]:
+def _model_material_source_fields(operation: Operation) -> dict[str, str]:
     fields = _fields(operation.args)
     if "index" not in fields:
-        raise FldError(f"line {operation.line}: model_asset requires index")
-    extra = set(fields) - MODEL_ASSET_FIELD_NAMES - {"index"}
+        raise FldError(f"line {operation.line}: model_material requires index")
+    extra = set(fields) - MODEL_MATERIAL_FIELD_NAMES - {"index"}
     if extra:
         raise FldError(
-            f"line {operation.line}: unknown model_asset fields {sorted(extra)}"
+            f"line {operation.line}: unknown model_material fields {sorted(extra)}"
         )
     return fields
 
@@ -1499,11 +1527,11 @@ def render_source(data: bytes) -> str:
             model_resource, items = _read_model_resource(
                 data, resource.data, data_end, stem + " field model"
             )
-            assets = _read_model_assets(
+            materials = _read_model_materials(
                 data,
-                model_resource.assets,
+                model_resource.materials,
                 data_end,
-                stem + " model assets",
+                stem + " model materials",
             )
             motion = _read_model_motion(
                 data,
@@ -1511,19 +1539,19 @@ def render_source(data: bytes) -> str:
                 data_end,
                 relocations,
                 len(items),
-                len(assets),
+                len(materials),
                 stem + " model motion",
             )
             draw_roots, draw_lists, draws = _read_model_draw_graph(
                 data,
                 items,
-                len(assets),
+                len(materials),
                 data_end,
                 relocations,
                 stem + " field model",
             )
             _assign_label(labels, model_resource.items, f"{stem}_items")
-            _assign_label(labels, model_resource.assets, f"{stem}_assets")
+            _assign_label(labels, model_resource.materials, f"{stem}_materials")
             _assign_label(labels, model_resource.motion, f"{stem}_motion")
             _assign_label(labels, motion.clip_table, f"{stem}_motion_clips")
             for clip_index, clip in enumerate(motion.clips):
@@ -1562,7 +1590,7 @@ def render_source(data: bytes) -> str:
                 [
                     "model_resource "
                     f"items={model_ref(model_resource.items)} "
-                    f"assets={model_ref(model_resource.assets)} "
+                    f"materials={model_ref(model_resource.materials)} "
                     f"motion={model_ref(model_resource.motion)}"
                 ],
                 stem + " field model",
@@ -1606,23 +1634,26 @@ def render_source(data: bytes) -> str:
                     f"{stem} model item {index} bounds",
                 )
 
-            asset_lines = [f"model_assets count={len(assets)}"]
-            for asset in assets:
-                fields = [f"index={asset.index}"]
-                for field_name, values in asset.fields:
-                    if field_name in {"values_08", "values_40", "scalar_100", "scalar_200", "pair_400"}:
+            material_lines = [f"model_materials count={len(materials)}"]
+            for material in materials:
+                fields = [f"index={material.index}"]
+                for field_name, values in material.fields:
+                    if field_name in {
+                        "primary_uv_transform",
+                        "secondary_uv_transform",
+                        "scalar",
+                        "scalar_pair",
+                    }:
                         text = ",".join(_float_text(value) for value in values)
-                    elif field_name in {"word_01", "word_02", "word_10", "word_80"}:
-                        text = ",".join(f"0x{value:08x}" for value in values)
                     else:
                         text = ",".join(str(value) for value in values)
                     fields.append(f"{field_name}={text}")
-                asset_lines.append("model_asset " + " ".join(fields))
+                material_lines.append("model_material " + " ".join(fields))
             add_span(
-                model_resource.assets,
-                4 + sum(asset.size for asset in assets),
-                asset_lines,
-                stem + " model assets",
+                model_resource.materials,
+                4 + sum(material.size for material in materials),
+                material_lines,
+                stem + " model materials",
             )
 
             motion_lines = [
@@ -1632,10 +1663,12 @@ def render_source(data: bytes) -> str:
             ]
             for binding in motion.bindings:
                 family = MODEL_MOTION_FAMILIES[binding.family]
-                if binding.family == 0:
-                    selector = MODEL_MOTION_NODE_SELECTORS[binding.selector]
-                else:
-                    selector = str(binding.selector)
+                selectors = (
+                    MODEL_MOTION_NODE_SELECTORS
+                    if binding.family == 0
+                    else MODEL_MOTION_MATERIAL_SELECTORS
+                )
+                selector = selectors[binding.selector]
                 motion_lines.append(
                     "model_motion_binding "
                     f"family={family} selector={selector} target={binding.target}"
@@ -1741,7 +1774,7 @@ def render_source(data: bytes) -> str:
                     MODEL_DRAW_SIZE,
                     [
                         "model_draw "
-                        f"asset={draw.asset} qwords={draw.quadwords} "
+                        f"material={draw.material} qwords={draw.quadwords} "
                         f"packet=@{_label_for(labels, draw.packet)}"
                     ],
                     stem + " model draw",
@@ -2090,7 +2123,12 @@ def _model_motion_binding_source(
                 f"{fields['selector']!r}"
             )
     else:
-        selector = _int(fields["selector"])
+        selector = MODEL_MOTION_MATERIAL_SELECTOR_IDS.get(fields["selector"])
+        if selector is None:
+            raise FldError(
+                f"line {operation.line}: unknown material-motion selector "
+                f"{fields['selector']!r}"
+            )
     format_name, _ = _model_motion_format(
         family, selector, f"line {operation.line}"
     )
@@ -2378,7 +2416,7 @@ def _operation_size(operation: Operation, offset: int) -> int:
         "model_items": MODEL_ITEM_LIST_SIZE,
         "model_item": MODEL_ITEM_SIZE,
         "model_bounds": MODEL_BOUNDS_SIZE,
-        "model_assets": 4,
+        "model_materials": 4,
         "model_draw": MODEL_DRAW_SIZE,
         "model_motion_playbook": 8,
         "model_motion_binding": 8,
@@ -2418,12 +2456,16 @@ def _operation_size(operation: Operation, offset: int) -> int:
         if not 1 <= count <= 3:
             raise FldError(f"line {operation.line}: vif_nops count must be in 1..3")
         return count * 4
-    if name == "model_asset":
-        fields = _model_asset_source_fields(operation)
+    if name == "model_material":
+        fields = _model_material_source_fields(operation)
         size = 8
-        for _, field_name, kind, width in MODEL_ASSET_FIELDS:
+        for _, field_name, kind, width in MODEL_MATERIAL_FIELDS:
             if field_name in fields:
-                size += 4 if kind in {"resource", "resource_pair"} else width * 4
+                size += (
+                    4
+                    if kind in {"rgba8", "resource", "resource_pair"}
+                    else width * 4
+                )
         return size
     if name == "model_draw_set":
         fields = _fields(args)
@@ -2576,7 +2618,7 @@ def _validate_model_source_blocks(operations: tuple[Operation, ...]) -> None:
     }
     counted_blocks = {
         "model_items": "model_item",
-        "model_assets": "model_asset",
+        "model_materials": "model_material",
     }
     for index, operation in enumerate(operations):
         item_name = counted_blocks.get(operation.name)
@@ -2595,9 +2637,10 @@ def _validate_model_source_blocks(operations: tuple[Operation, ...]) -> None:
         if operation.name != "model_draw":
             continue
         fields = _fields(operation.args)
-        if set(fields) != {"asset", "qwords", "packet"}:
+        if set(fields) != {"material", "qwords", "packet"}:
             raise FldError(
-                f"line {operation.line}: model_draw expects asset=... qwords=... packet=..."
+                f"line {operation.line}: model_draw expects "
+                "material=... qwords=... packet=..."
             )
         packet_name = _symbol(fields["packet"])
         if packet_name not in label_operations:
@@ -2676,24 +2719,27 @@ def _encode_static_model_operation(
                 *_csv(fields["maximum"], 3, _parse_float),
             )
         )
-    elif name == "model_assets":
+    elif name == "model_materials":
         fields = checked_fields(("count",))
         output.extend(struct.pack("<I", _int(fields["count"])))
-    elif name == "model_asset":
-        fields = _model_asset_source_fields(operation)
+    elif name == "model_material":
+        fields = _model_material_source_fields(operation)
         flags = sum(
             bit
-            for bit, field_name, _, _ in MODEL_ASSET_FIELDS
+            for bit, field_name, _, _ in MODEL_MATERIAL_FIELDS
             if field_name in fields
         )
         output.extend(struct.pack("<IHH", _int(fields["index"]), 0, flags))
-        for _, field_name, kind, width in MODEL_ASSET_FIELDS:
+        for _, field_name, kind, width in MODEL_MATERIAL_FIELDS:
             if field_name not in fields:
                 continue
-            if kind == "u32":
-                output.extend(
-                    struct.pack("<" + "I" * width, *_csv(fields[field_name], width))
-                )
+            if kind == "rgba8":
+                values = _csv(fields[field_name], 4)
+                if any(not 0 <= value <= 0xFF for value in values):
+                    raise FldError(
+                        f"line {operation.line}: {field_name} component exceeds u8"
+                    )
+                output.extend(struct.pack("<4B", *values))
             elif kind == "float":
                 output.extend(
                     struct.pack(
@@ -2724,13 +2770,13 @@ def _encode_static_model_operation(
         for reference in references:
             write_pointer(reference)
     elif name == "model_draw":
-        fields = checked_fields(("asset", "qwords", "packet"))
-        asset, quadwords = _int(fields["asset"]), _int(fields["qwords"])
-        if not 0 <= asset <= 0xFFFF or not 0 <= quadwords <= 0xFFFF:
+        fields = checked_fields(("material", "qwords", "packet"))
+        material, quadwords = _int(fields["material"]), _int(fields["qwords"])
+        if not 0 <= material <= 0xFFFF or not 0 <= quadwords <= 0xFFFF:
             raise FldError(
-                f"line {operation.line}: asset index or quadword count exceeds u16"
+                f"line {operation.line}: material index or quadword count exceeds u16"
             )
-        output.extend(struct.pack("<II", 1, quadwords | asset << 16))
+        output.extend(struct.pack("<II", 1, quadwords | material << 16))
         write_pointer(fields["packet"])
         output.extend(bytes(4))
     elif name == "mesh_header":
@@ -2974,11 +3020,11 @@ def encode(operations: tuple[Operation, ...]) -> bytes:
         elif name == "model_resource":
             f = checked_fields(
                 operation,
-                ("items", "assets", "motion"),
+                ("items", "materials", "motion"),
             )
             output.extend(struct.pack("<4I", 0, 1, 0, 0))
             output.extend(pointer(f["items"]))
-            output.extend(pointer(f["assets"]))
+            output.extend(pointer(f["materials"]))
             output.extend(struct.pack("<II", 0, 0))
             output.extend(pointer(f["motion"]))
         elif _encode_static_model_operation(

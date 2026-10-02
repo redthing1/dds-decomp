@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import edited FLD1 mesh attributes from a DDS model GLB."""
+"""Import edited FLD1 geometry and material parameters from a DDS model GLB."""
 
 from __future__ import annotations
 
@@ -83,19 +83,26 @@ def import_geometry(
         model, items = fld._read_model_resource(
             field_data, resource.data, data_end, f"model {source_name}"
         )
-        assets = fld._read_model_assets(
-            field_data, model.assets, data_end, f"model {source_name} assets"
+        materials = fld._read_model_materials(
+            field_data, model.materials, data_end, f"model {source_name} materials"
         )
         draw_roots, draw_lists, draws = fld._read_model_draw_graph(
             field_data,
             items,
-            len(assets),
+            len(materials),
             data_end,
             relocations,
             f"model {source_name}",
         )
         graphs.append(
-            ModelGraph(source_name, items, draw_roots, draw_lists, draws)
+            ModelGraph(
+                source_name,
+                items,
+                materials,
+                draw_roots,
+                draw_lists,
+                draws,
+            )
         )
 
     rebuilt, summary = import_model_graphs(
@@ -130,8 +137,9 @@ def main() -> None:
     except (ModelImportError, OSError, ValueError) as exc:
         parser.error(str(exc))
     print(
-        f"imported {summary.models} resources and {summary.meshes} meshes; "
-        f"changed {summary.changed_meshes} meshes "
+        f"imported {summary.models} resources, {summary.materials} materials, "
+        f"and {summary.meshes} meshes; changed {summary.changed_materials} materials "
+        f"and {summary.changed_meshes} meshes "
         f"({summary.positions} position, {summary.normals} normal, "
         f"{summary.texcoords} texcoord, {summary.attributes} attribute, "
         f"{summary.colors} color streams)"

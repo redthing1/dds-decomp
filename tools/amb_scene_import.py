@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import edited DDS automap model geometry from an AMB scene GLB."""
+"""Import edited DDS automap geometry and material parameters from a GLB."""
 
 from __future__ import annotations
 
@@ -69,6 +69,7 @@ def import_geometry(
             ModelGraph(
                 source_name,
                 graph.items,
+                graph.materials,
                 graph.draw_roots,
                 graph.draw_lists,
                 graph.draws,
@@ -107,8 +108,9 @@ def main() -> None:
     except (ModelImportError, OSError, ValueError) as exc:
         parser.error(str(exc))
     print(
-        f"imported {summary.models} areas and {summary.meshes} meshes; "
-        f"changed {summary.changed_meshes} meshes "
+        f"imported {summary.models} areas, {summary.materials} materials, "
+        f"and {summary.meshes} meshes; changed {summary.changed_materials} materials "
+        f"and {summary.changed_meshes} meshes "
         f"({summary.positions} position, {summary.normals} normal, "
         f"{summary.texcoords} texcoord, {summary.attributes} attribute, "
         f"{summary.colors} color streams)"

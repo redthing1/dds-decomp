@@ -12,11 +12,17 @@ sys.path.insert(0, str(ROOT / "tools"))
 import fld  # noqa: E402
 import fld_model  # noqa: E402
 import fld_model_import  # noqa: E402
+import tmx  # noqa: E402
 from test_fld_model import SOURCE  # noqa: E402
 
 
 EDIT_SOURCE = (
-    SOURCE.replace("model_draw asset=0 qwords=4", "model_draw asset=0 qwords=10")
+    SOURCE.replace(
+        "model_material index=0",
+        "model_material index=0 color_0=128,128,128,128 "
+        "primary_uv_transform=0,0,1,1,0 scalar=1",
+    )
+    .replace("model_draw material=0 qwords=4", "model_draw material=0 qwords=10")
     .replace(
         "mesh_program address=12",
         "mesh_normals\n"
@@ -31,7 +37,7 @@ EDIT_SOURCE = (
 )
 
 ATTRIBUTE_SOURCE = (
-    SOURCE.replace("model_draw asset=0 qwords=4", "model_draw asset=0 qwords=8")
+    SOURCE.replace("model_draw material=0 qwords=4", "model_draw material=0 qwords=8")
     .replace(
         "mesh_program address=12",
         "mesh_attributes\n"
@@ -53,9 +59,11 @@ def first_mesh(data: bytes) -> fld.ModelMesh:
     resources = fld._read_resources(data, fld._read_types(data, words, data_end))
     resource = next(resource for resource in resources if resource.type_id == 2)
     model, items = fld._read_model_resource(data, resource.data, data_end, "test")
-    assets = fld._read_model_assets(data, model.assets, data_end, "test assets")
+    materials = fld._read_model_materials(
+        data, model.materials, data_end, "test materials"
+    )
     roots, lists, draws = fld._read_model_draw_graph(
-        data, items, len(assets), data_end, set(relocations), "test"
+        data, items, len(materials), data_end, set(relocations), "test"
     )
     draw_list = lists[roots[items[0].commands][0]]
     draw = draws[draw_list.draws[0]]
@@ -63,6 +71,16 @@ def first_mesh(data: bytes) -> fld.ModelMesh:
         data, draw.packet, draw.quadwords * 0x10, "test packet"
     )
     return meshes[0]
+
+
+def first_material(data: bytes) -> fld.ModelMaterial:
+    words, data_end, _ = fld._read_header(data)
+    resources = fld._read_resources(data, fld._read_types(data, words, data_end))
+    resource = next(resource for resource in resources if resource.type_id == 2)
+    model, _ = fld._read_model_resource(data, resource.data, data_end, "test")
+    return fld._read_model_materials(
+        data, model.materials, data_end, "test materials"
+    )[0]
 
 
 class FldModelImportTests(unittest.TestCase):
@@ -83,7 +101,7 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(rebuilt, self.data)
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 0, 0, 0, 0, 0, 0),
+            fld_model_import.ImportSummary(1, 1, 0, 0, 0, 0, 0, 0, 1, 0),
         )
 
     def test_imports_vertex_attributes_without_changing_packet_shape(self) -> None:
@@ -115,7 +133,7 @@ class FldModelImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 1, 1, 1, 1, 0, 1),
+            fld_model_import.ImportSummary(1, 1, 1, 1, 1, 1, 0, 1, 1, 0),
         )
         mesh = first_mesh(rebuilt)
         self.assertEqual(mesh.positions[0][0], 125.0)
@@ -141,9 +159,54 @@ class FldModelImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 1, 0, 0, 0, 1, 0),
+            fld_model_import.ImportSummary(1, 1, 1, 0, 0, 0, 1, 0, 1, 0),
         )
         self.assertEqual(first_mesh(rebuilt).attributes[0][0], 2.5)
+
+    def test_imports_semantic_material_fields(self) -> None:
+        gltf_material = self.document["materials"][self.primitive["material"]]
+        fields = gltf_material["extras"]["ddsMaterialFields"]
+        fields["color_0"] = [12, 34, 56, 78]
+        fields["primary_uv_transform"][0] = 0.25
+        fields["scalar"][0] = 0.75
+
+        rebuilt, summary = fld_model_import.import_geometry(
+            self.data, self.document, bytes(self.binary)
+        )
+        self.assertEqual(summary.changed_materials, 1)
+        values = dict(first_material(rebuilt).fields)
+        self.assertEqual(values["color_0"], (12, 34, 56, 78))
+        self.assertEqual(values["primary_uv_transform"][0], 0.25)
+        self.assertEqual(values["scalar"], (0.75,))
+        self.assertEqual(first_mesh(rebuilt), first_mesh(self.data))
+
+    def test_texture_reference_edits_require_and_obey_bundle_metadata(self) -> None:
+        source = EDIT_SOURCE.replace(" scalar=1", " primary_texture=0 scalar=1")
+        data = fld.encode(fld.parse_source(source))
+        document, binary = fld_model.build_gltf(data)
+        fields = document["materials"][0]["extras"]["ddsMaterialFields"]
+        fields["primary_texture"] = [1]
+        with self.assertRaisesRegex(
+            fld_model_import.ModelImportError, "without bundle metadata"
+        ):
+            fld_model_import.import_geometry(data, document, binary)
+
+        texture = tmx.Texture(0, 8, 8, 0x01, bytes((0, 0, 0, 0xFF)) * 64)
+        document, binary = fld_model.build_gltf(
+            data, textures=(texture, texture)
+        )
+        material_index = document["meshes"][0]["primitives"][0]["material"]
+        fields = document["materials"][material_index]["extras"][
+            "ddsMaterialFields"
+        ]
+        fields["primary_texture"] = [2]
+        with self.assertRaisesRegex(
+            fld_model_import.ModelImportError, "bundle has 2 textures"
+        ):
+            fld_model_import.import_geometry(data, document, binary)
+        fields["primary_texture"] = [1]
+        rebuilt, _ = fld_model_import.import_geometry(data, document, binary)
+        self.assertEqual(dict(first_material(rebuilt).fields)["primary_texture"], (1,))
 
     def test_rejects_topology_and_identity_changes(self) -> None:
         indices = self.primitive["indices"]

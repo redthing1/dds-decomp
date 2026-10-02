@@ -730,7 +730,7 @@ model_draw_list selector=0 draws=@area_001_node_5_draws_list_0_draw_0,@area_001_
 zeros 4
 
 label area_001_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=38 packet=@area_001_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=38 packet=@area_001_node_5_draws_list_0_draw_0_packet
 
 label area_001_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -754,7 +754,7 @@ position 900.0,13000.0,-150.0001220703125 900.0,13000.0,-50.0001220703125 600.0,
 mesh_program address=12
 
 label area_001_node_5_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_001_node_5_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_001_node_5_draws_list_0_draw_1_packet
 
 label area_001_node_5_draws_list_0_draw_1_packet
 # mesh 0
@@ -776,7 +776,7 @@ model_draw_list selector=0 draws=@area_001_node_8_draws_list_0_draw_0,@area_001_
 zeros 4
 
 label area_001_node_8_draws_list_0_draw_0
-model_draw asset=0 qwords=44 packet=@area_001_node_8_draws_list_0_draw_0_packet
+model_draw material=0 qwords=44 packet=@area_001_node_8_draws_list_0_draw_0_packet
 
 label area_001_node_8_draws_list_0_draw_0_packet
 # mesh 0
@@ -802,7 +802,7 @@ mesh_program address=12
 vif_nops count=2
 
 label area_001_node_8_draws_list_0_draw_1
-model_draw asset=1 qwords=19 packet=@area_001_node_8_draws_list_0_draw_1_packet
+model_draw material=1 qwords=19 packet=@area_001_node_8_draws_list_0_draw_1_packet
 
 label area_001_node_8_draws_list_0_draw_1_packet
 # mesh 0
@@ -855,7 +855,7 @@ model_draw_list selector=0 draws=@area_004_node_3_draws_list_0_draw_0,@area_004_
 zeros 4
 
 label area_004_node_3_draws_list_0_draw_0
-model_draw asset=0 qwords=11 packet=@area_004_node_3_draws_list_0_draw_0_packet
+model_draw material=0 qwords=11 packet=@area_004_node_3_draws_list_0_draw_0_packet
 
 label area_004_node_3_draws_list_0_draw_0_packet
 # mesh 0
@@ -869,7 +869,7 @@ mesh_program address=12
 vif_nops count=2
 
 label area_004_node_3_draws_list_0_draw_1
-model_draw asset=1 qwords=16 packet=@area_004_node_3_draws_list_0_draw_1_packet
+model_draw material=1 qwords=16 packet=@area_004_node_3_draws_list_0_draw_1_packet
 
 label area_004_node_3_draws_list_0_draw_1_packet
 # mesh 0
@@ -893,7 +893,7 @@ model_draw_list selector=0 draws=@area_004_node_4_draws_list_0_draw_0,@area_004_
 zeros 4
 
 label area_004_node_4_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_004_node_4_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_004_node_4_draws_list_0_draw_0_packet
 
 label area_004_node_4_draws_list_0_draw_0_packet
 # mesh 0
@@ -906,7 +906,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_004_node_4_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_004_node_4_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_004_node_4_draws_list_0_draw_1_packet
 
 label area_004_node_4_draws_list_0_draw_1_packet
 # mesh 0
@@ -942,7 +942,7 @@ model_draw_list selector=0 draws=@area_005_node_3_draws_list_0_draw_0,@area_005_
 zeros 4
 
 label area_005_node_3_draws_list_0_draw_0
-model_draw asset=0 qwords=9 packet=@area_005_node_3_draws_list_0_draw_0_packet
+model_draw material=0 qwords=9 packet=@area_005_node_3_draws_list_0_draw_0_packet
 
 label area_005_node_3_draws_list_0_draw_0_packet
 # mesh 0
@@ -955,7 +955,7 @@ mesh_program address=12
 vif_nops count=2
 
 label area_005_node_3_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_005_node_3_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_005_node_3_draws_list_0_draw_1_packet
 
 label area_005_node_3_draws_list_0_draw_1_packet
 # mesh 0
@@ -977,7 +977,7 @@ model_draw_list selector=0 draws=@area_005_node_5_draws_list_0_draw_0,@area_005_
 zeros 4
 
 label area_005_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_005_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_005_node_5_draws_list_0_draw_0_packet
 
 label area_005_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -990,7 +990,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_005_node_5_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_005_node_5_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_005_node_5_draws_list_0_draw_1_packet
 
 label area_005_node_5_draws_list_0_draw_1_packet
 # mesh 0
@@ -1032,7 +1032,7 @@ model_draw_list selector=0 draws=@area_007_node_3_draws_list_0_draw_0,@area_007_
 zeros 4
 
 label area_007_node_3_draws_list_0_draw_0
-model_draw asset=0 qwords=30 packet=@area_007_node_3_draws_list_0_draw_0_packet
+model_draw material=0 qwords=30 packet=@area_007_node_3_draws_list_0_draw_0_packet
 
 label area_007_node_3_draws_list_0_draw_0_packet
 # mesh 0
@@ -1049,7 +1049,7 @@ mesh_program address=12
 vif_nops count=2
 
 label area_007_node_3_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_007_node_3_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_007_node_3_draws_list_0_draw_1_packet
 
 label area_007_node_3_draws_list_0_draw_1_packet
 # mesh 0
@@ -1085,7 +1085,7 @@ model_draw_list selector=0 draws=@area_008_node_4_draws_list_0_draw_0,@area_008_
 zeros 4
 
 label area_008_node_4_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_008_node_4_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_008_node_4_draws_list_0_draw_0_packet
 
 label area_008_node_4_draws_list_0_draw_0_packet
 # mesh 0
@@ -1098,7 +1098,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_008_node_4_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_008_node_4_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_008_node_4_draws_list_0_draw_1_packet
 
 label area_008_node_4_draws_list_0_draw_1_packet
 # mesh 0
@@ -1121,7 +1121,7 @@ model_draw_list selector=0 draws=@area_008_node_5_draws_list_0_draw_0,@area_008_
 zeros 4
 
 label area_008_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_008_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_008_node_5_draws_list_0_draw_0_packet
 
 label area_008_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -1133,7 +1133,7 @@ position -900.0,12000.0,600.0 -900.0,12000.0,-550.0 900.0,12000.0,600.0 900.0,12
 mesh_program address=12
 
 label area_008_node_5_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_008_node_5_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_008_node_5_draws_list_0_draw_1_packet
 
 label area_008_node_5_draws_list_0_draw_1_packet
 # mesh 0
@@ -1156,7 +1156,7 @@ model_draw_list selector=0 draws=@area_008_node_6_draws_list_0_draw_0,@area_008_
 zeros 4
 
 label area_008_node_6_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_008_node_6_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_008_node_6_draws_list_0_draw_0_packet
 
 label area_008_node_6_draws_list_0_draw_0_packet
 # mesh 0
@@ -1169,7 +1169,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_008_node_6_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_008_node_6_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_008_node_6_draws_list_0_draw_1_packet
 
 label area_008_node_6_draws_list_0_draw_1_packet
 # mesh 0
@@ -1208,7 +1208,7 @@ model_draw_list selector=0 draws=@area_009_node_5_draws_list_0_draw_0
 zeros 8
 
 label area_009_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_009_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_009_node_5_draws_list_0_draw_0_packet
 
 label area_009_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -1231,7 +1231,7 @@ model_draw_list selector=0 draws=@area_009_node_6_draws_list_0_draw_0
 zeros 8
 
 label area_009_node_6_draws_list_0_draw_0
-model_draw asset=0 qwords=14 packet=@area_009_node_6_draws_list_0_draw_0_packet
+model_draw material=0 qwords=14 packet=@area_009_node_6_draws_list_0_draw_0_packet
 
 label area_009_node_6_draws_list_0_draw_0_packet
 # mesh 0
@@ -1255,7 +1255,7 @@ model_draw_list selector=0 draws=@area_009_node_7_draws_list_0_draw_0,@area_009_
 zeros 4
 
 label area_009_node_7_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_009_node_7_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_009_node_7_draws_list_0_draw_0_packet
 
 label area_009_node_7_draws_list_0_draw_0_packet
 # mesh 0
@@ -1268,7 +1268,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_009_node_7_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_009_node_7_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_009_node_7_draws_list_0_draw_1_packet
 
 label area_009_node_7_draws_list_0_draw_1_packet
 # mesh 0
@@ -1290,7 +1290,7 @@ model_draw_list selector=0 draws=@area_009_node_8_draws_list_0_draw_0,@area_009_
 zeros 4
 
 label area_009_node_8_draws_list_0_draw_0
-model_draw asset=0 qwords=14 packet=@area_009_node_8_draws_list_0_draw_0_packet
+model_draw material=0 qwords=14 packet=@area_009_node_8_draws_list_0_draw_0_packet
 
 label area_009_node_8_draws_list_0_draw_0_packet
 # mesh 0
@@ -1303,7 +1303,7 @@ position 2700.0,12000.0,2375.0 2700.0,12000.0,-1125.0 800.0,12000.0,2375.0 800.0
 mesh_program address=12
 
 label area_009_node_8_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_009_node_8_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_009_node_8_draws_list_0_draw_1_packet
 
 label area_009_node_8_draws_list_0_draw_1_packet
 # mesh 0
@@ -1338,7 +1338,7 @@ model_draw_list selector=0 draws=@area_010_node_3_draws_list_0_draw_0,@area_010_
 zeros 4
 
 label area_010_node_3_draws_list_0_draw_0
-model_draw asset=0 qwords=8 packet=@area_010_node_3_draws_list_0_draw_0_packet
+model_draw material=0 qwords=8 packet=@area_010_node_3_draws_list_0_draw_0_packet
 
 label area_010_node_3_draws_list_0_draw_0_packet
 # mesh 0
@@ -1351,7 +1351,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_010_node_3_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_010_node_3_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_010_node_3_draws_list_0_draw_1_packet
 
 label area_010_node_3_draws_list_0_draw_1_packet
 # mesh 0
@@ -1374,7 +1374,7 @@ model_draw_list selector=0 draws=@area_010_node_4_draws_list_0_draw_0,@area_010_
 zeros 4
 
 label area_010_node_4_draws_list_0_draw_0
-model_draw asset=0 qwords=11 packet=@area_010_node_4_draws_list_0_draw_0_packet
+model_draw material=0 qwords=11 packet=@area_010_node_4_draws_list_0_draw_0_packet
 
 label area_010_node_4_draws_list_0_draw_0_packet
 # mesh 0
@@ -1388,7 +1388,7 @@ mesh_program address=12
 vif_nops count=2
 
 label area_010_node_4_draws_list_0_draw_1
-model_draw asset=1 qwords=12 packet=@area_010_node_4_draws_list_0_draw_1_packet
+model_draw material=1 qwords=12 packet=@area_010_node_4_draws_list_0_draw_1_packet
 
 label area_010_node_4_draws_list_0_draw_1_packet
 # mesh 0
@@ -1421,7 +1421,7 @@ model_draw_list selector=0 draws=@area_011_node_2_draws_list_0_draw_0,@area_011_
 zeros 4
 
 label area_011_node_2_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_011_node_2_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_011_node_2_draws_list_0_draw_0_packet
 
 label area_011_node_2_draws_list_0_draw_0_packet
 # mesh 0
@@ -1433,7 +1433,7 @@ position -850.0,12000.0,600.0 -850.0,12000.0,-600.0 850.0,12000.0,600.0 850.0,12
 mesh_program address=12
 
 label area_011_node_2_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_011_node_2_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_011_node_2_draws_list_0_draw_1_packet
 
 label area_011_node_2_draws_list_0_draw_1_packet
 # mesh 0
@@ -1474,7 +1474,7 @@ model_draw_list selector=0 draws=@area_013_node_2_draws_list_0_draw_0,@area_013_
 zeros 4
 
 label area_013_node_2_draws_list_0_draw_0
-model_draw asset=0 qwords=14 packet=@area_013_node_2_draws_list_0_draw_0_packet
+model_draw material=0 qwords=14 packet=@area_013_node_2_draws_list_0_draw_0_packet
 
 label area_013_node_2_draws_list_0_draw_0_packet
 # mesh 0
@@ -1488,7 +1488,7 @@ mesh_program address=12
 vif_nops count=3
 
 label area_013_node_2_draws_list_0_draw_1
-model_draw asset=1 qwords=23 packet=@area_013_node_2_draws_list_0_draw_1_packet
+model_draw material=1 qwords=23 packet=@area_013_node_2_draws_list_0_draw_1_packet
 
 label area_013_node_2_draws_list_0_draw_1_packet
 # mesh 0
@@ -1530,7 +1530,7 @@ model_draw_list selector=0 draws=@area_014_node_5_draws_list_0_draw_0,@area_014_
 zeros 4
 
 label area_014_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_014_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_014_node_5_draws_list_0_draw_0_packet
 
 label area_014_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -1542,7 +1542,7 @@ position -599.9990234375,12010.0,500.0009765625 -599.998779296875,12010.0,-499.9
 mesh_program address=12
 
 label area_014_node_5_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_014_node_5_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_014_node_5_draws_list_0_draw_1_packet
 
 label area_014_node_5_draws_list_0_draw_1_packet
 # mesh 0
@@ -1564,7 +1564,7 @@ model_draw_list selector=0 draws=@area_014_node_6_draws_list_0_draw_0,@area_014_
 zeros 4
 
 label area_014_node_6_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_014_node_6_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_014_node_6_draws_list_0_draw_0_packet
 
 label area_014_node_6_draws_list_0_draw_0_packet
 # mesh 0
@@ -1576,7 +1576,7 @@ position -600.0,12010.0,500.0 -600.0,12010.0,-500.0 550.0,12010.0,500.0 550.0,12
 mesh_program address=12
 
 label area_014_node_6_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_014_node_6_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_014_node_6_draws_list_0_draw_1_packet
 
 label area_014_node_6_draws_list_0_draw_1_packet
 # mesh 0
@@ -1598,7 +1598,7 @@ model_draw_list selector=0 draws=@area_014_node_7_draws_list_0_draw_0,@area_014_
 zeros 4
 
 label area_014_node_7_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_014_node_7_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_014_node_7_draws_list_0_draw_0_packet
 
 label area_014_node_7_draws_list_0_draw_0_packet
 # mesh 0
@@ -1610,7 +1610,7 @@ position -599.9990234375,12010.0,500.000732421875 -599.998779296875,12010.0,-499
 mesh_program address=12
 
 label area_014_node_7_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_014_node_7_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_014_node_7_draws_list_0_draw_1_packet
 
 label area_014_node_7_draws_list_0_draw_1_packet
 # mesh 0
@@ -1632,7 +1632,7 @@ model_draw_list selector=0 draws=@area_014_node_8_draws_list_0_draw_0,@area_014_
 zeros 4
 
 label area_014_node_8_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_014_node_8_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_014_node_8_draws_list_0_draw_0_packet
 
 label area_014_node_8_draws_list_0_draw_0_packet
 # mesh 0
@@ -1644,7 +1644,7 @@ position -600.0,12010.0,500.0 -600.0,12010.0,-500.0 550.0,12010.0,500.0 550.0,12
 mesh_program address=12
 
 label area_014_node_8_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_014_node_8_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_014_node_8_draws_list_0_draw_1_packet
 
 label area_014_node_8_draws_list_0_draw_1_packet
 # mesh 0
@@ -1729,7 +1729,7 @@ model_draw_list selector=0 draws=@area_021_node_5_draws_list_0_draw_0,@area_021_
 zeros 4
 
 label area_021_node_5_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_021_node_5_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_021_node_5_draws_list_0_draw_0_packet
 
 label area_021_node_5_draws_list_0_draw_0_packet
 # mesh 0
@@ -1741,7 +1741,7 @@ position -300.0,13000.0,400.0 -300.0,13000.0,-450.0 300.0,13000.0,400.0 300.0,13
 mesh_program address=12
 
 label area_021_node_5_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_021_node_5_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_021_node_5_draws_list_0_draw_1_packet
 
 label area_021_node_5_draws_list_0_draw_1_packet
 # mesh 0
@@ -1763,7 +1763,7 @@ model_draw_list selector=0 draws=@area_021_node_6_draws_list_0_draw_0,@area_021_
 zeros 4
 
 label area_021_node_6_draws_list_0_draw_0
-model_draw asset=0 qwords=15 packet=@area_021_node_6_draws_list_0_draw_0_packet
+model_draw material=0 qwords=15 packet=@area_021_node_6_draws_list_0_draw_0_packet
 
 label area_021_node_6_draws_list_0_draw_0_packet
 # mesh 0
@@ -1777,7 +1777,7 @@ mesh_program address=12
 vif_nops count=1
 
 label area_021_node_6_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_021_node_6_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_021_node_6_draws_list_0_draw_1_packet
 
 label area_021_node_6_draws_list_0_draw_1_packet
 # mesh 0
@@ -1800,7 +1800,7 @@ model_draw_list selector=0 draws=@area_021_node_7_draws_list_0_draw_0
 zeros 8
 
 label area_021_node_7_draws_list_0_draw_0
-model_draw asset=2 qwords=5 packet=@area_021_node_7_draws_list_0_draw_0_packet
+model_draw material=2 qwords=5 packet=@area_021_node_7_draws_list_0_draw_0_packet
 
 label area_021_node_7_draws_list_0_draw_0_packet
 # mesh 0
@@ -1834,7 +1834,7 @@ model_draw_list selector=0 draws=@area_022_node_3_draws_list_0_draw_0,@area_022_
 zeros 4
 
 label area_022_node_3_draws_list_0_draw_0
-model_draw asset=0 qwords=26 packet=@area_022_node_3_draws_list_0_draw_0_packet
+model_draw material=0 qwords=26 packet=@area_022_node_3_draws_list_0_draw_0_packet
 
 label area_022_node_3_draws_list_0_draw_0_packet
 # mesh 0
@@ -1850,7 +1850,7 @@ position 350.0,13000.0,200.0 350.0,13000.0,650.0 250.0,13000.0,200.0 250.0,13000
 mesh_program address=12
 
 label area_022_node_3_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_022_node_3_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_022_node_3_draws_list_0_draw_1_packet
 
 label area_022_node_3_draws_list_0_draw_1_packet
 # mesh 0
@@ -1978,7 +1978,7 @@ model_draw_list selector=0 draws=@area_035_node_2_draws_list_0_draw_0,@area_035_
 zeros 4
 
 label area_035_node_2_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_035_node_2_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_035_node_2_draws_list_0_draw_0_packet
 
 label area_035_node_2_draws_list_0_draw_0_packet
 # mesh 0
@@ -1990,7 +1990,7 @@ position -300.0,13000.0,500.0 -300.0,13000.0,-500.0 900.0,13000.0,500.0 900.0,13
 mesh_program address=12
 
 label area_035_node_2_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_035_node_2_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_035_node_2_draws_list_0_draw_1_packet
 
 label area_035_node_2_draws_list_0_draw_1_packet
 # mesh 0
@@ -2062,7 +2062,7 @@ model_draw_list selector=0 draws=@area_041_node_2_draws_list_0_draw_0,@area_041_
 zeros 4
 
 label area_041_node_2_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_041_node_2_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_041_node_2_draws_list_0_draw_0_packet
 
 label area_041_node_2_draws_list_0_draw_0_packet
 # mesh 0
@@ -2074,7 +2074,7 @@ position -1500.0,13000.0,300.0 -1500.0,13000.0,-300.0 1450.0,13000.0,300.0 1450.
 mesh_program address=12
 
 label area_041_node_2_draws_list_0_draw_1
-model_draw asset=1 qwords=9 packet=@area_041_node_2_draws_list_0_draw_1_packet
+model_draw material=1 qwords=9 packet=@area_041_node_2_draws_list_0_draw_1_packet
 
 label area_041_node_2_draws_list_0_draw_1_packet
 # mesh 0
@@ -2115,7 +2115,7 @@ model_draw_list selector=0 draws=@area_043_node_2_draws_list_0_draw_0,@area_043_
 zeros 4
 
 label area_043_node_2_draws_list_0_draw_0
-model_draw asset=0 qwords=5 packet=@area_043_node_2_draws_list_0_draw_0_packet
+model_draw material=0 qwords=5 packet=@area_043_node_2_draws_list_0_draw_0_packet
 
 label area_043_node_2_draws_list_0_draw_0_packet
 # mesh 0
@@ -2127,7 +2127,7 @@ position -500.0,13000.0,570.0 -500.0,13000.0,-580.0 500.0,13000.0,570.0 500.0,13
 mesh_program address=12
 
 label area_043_node_2_draws_list_0_draw_1
-model_draw asset=1 qwords=5 packet=@area_043_node_2_draws_list_0_draw_1_packet
+model_draw material=1 qwords=5 packet=@area_043_node_2_draws_list_0_draw_1_packet
 
 label area_043_node_2_draws_list_0_draw_1_packet
 # mesh 0
@@ -2163,10 +2163,10 @@ model_items count=1
 model_item node_id=0 parent=-1 rotation=-0.0,-0.0,-0.0 position=88000.0,-0.0,0.0,1.0 scale=1.0,1.0,1.0,0.0 bounds=null commands=null
 
 label area_001_material
-model_assets count=3
-model_asset index=0 word_02=0x80454040 scalar_200=1.0
-model_asset index=1 word_02=0x80e9acaf scalar_200=1.0
-model_asset index=2 word_02=0x80ad7cce scalar_200=1.0
+model_materials count=3
+model_material index=0 color_1=64,64,69,128 scalar=1.0
+model_material index=1 color_1=175,172,233,128 scalar=1.0
+model_material index=2 color_1=206,124,173,128 scalar=1.0
 zeros 12
 
 label area_001_position

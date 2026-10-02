@@ -38,7 +38,7 @@ header -> areas -> name
                               -> icons -> position
                               -> minimum/maximum bounds
                 -> model root -> node hierarchy -> bounds and draw graph
-                              -> material assets  -> VIF mesh packets
+                              -> materials       -> VIF mesh packets
                 -> position
 ```
 
@@ -64,7 +64,7 @@ Some zero-count icon lists retain a non-null pointer, and some sub-blocks omit
 one or both bounds. Source preserves those distinctions because they are part
 of the original object graph.
 
-The model root uses the same SDF node, asset, draw, and mesh structures as
+The model root uses the same SDF node, material, draw, and mesh structures as
 FLD1 model resources, without the FLD1 resource wrapper or motion playbook.
 AMB source therefore shares the established model vocabulary:
 
@@ -87,15 +87,15 @@ position -1300,0,-5299.9814453125 -1300,0,-6100 \
 mesh_program address=12
 ```
 
-The complete corpus contains 4,883 material assets, 5,399 draws and packets,
+The complete corpus contains 4,883 materials, 5,399 draws and packets,
 35,528 triangles, and 60,629 vertices. Every object is typed: canonical source
 has no residual `bytes` or generic `pointer` directives. Names remain neutral
-for the two mesh control halfwords and asset selectors whose rendering roles
-are not yet established.
+for the two mesh control halfwords, while recovered material channels use the
+same semantic names as FLD1.
 
 Moving any labeled object updates the complete pointer graph. The codec rejects
 malformed extents, noncanonical relocation streams, misplaced relocations,
-invalid fixed strings, overlapping typed objects, invalid hierarchy or asset
+invalid fixed strings, overlapping typed objects, invalid hierarchy or material
 references, inconsistent draw sizes, and malformed VIF mesh packets.
 
 ## Scene export
@@ -112,7 +112,7 @@ python3 tools/amb_scene.py src/dds1/data/field/f024.ambasm f024.glb \
 The export retains every selected area's native model hierarchy, transforms,
 indexed meshes, vertex channels, draw selectors, and unresolved mesh controls.
 Area positions, sub-block names, floors, bounds, model-node links, and icon
-types are glTF metadata, along with the complete neutral asset fields. The
+types are glTF metadata, along with the complete semantic material fields. The
 matching root node is identified where the area position repeats its transform.
 Icons also receive a reusable octahedral marker;
 `--icon-marker-size 0` omits that diagnostic geometry. Native axes are
@@ -130,10 +130,10 @@ consumes the same decoded model graph used by disassembly and reuses the FLD1
 SDF-to-glTF consumer. The complete pass emits 1,446 areas, 13,810 glTF nodes,
 3,938 meshes, and 1,625 icon markers.
 
-## Geometry import
+## Geometry and material import
 
-`tools/amb_scene_import.py` applies edited model vertex streams from an
-exported AMB or composed field GLB back to exact automap source:
+`tools/amb_scene_import.py` applies edited material parameters and model vertex
+streams from an exported AMB or composed field GLB back to exact automap source:
 
 ```sh
 python3 tools/amb_scene_import.py edited-f024.glb \
@@ -141,13 +141,14 @@ python3 tools/amb_scene_import.py edited-f024.glb \
 ```
 
 The importer shares its SDF packet engine with the FLD1 model importer. It
-accepts position, normal, texture-coordinate, four-float attribute, and vertex-
-color changes while preserving triangle topology and controls, material and
-draw identities, stream layout, VIF commands, VU program addresses, packet
-sizes, and padding. Shared packet streams must carry one consistent edit.
+accepts the semantic fields in `extras.ddsMaterialFields` as well as position,
+normal, texture-coordinate, four-float attribute, and vertex-color changes. It
+preserves triangle topology and controls, material and draw identities, stream
+layout, VIF commands, VU program addresses, packet sizes, and padding. Shared
+packet streams and material variants must carry one consistent edit.
 
-Area and node transforms, sub-block metadata, icons, bounds, and material
-parameters remain authoritative in AMB source. The importer uses exact area,
+Area and node transforms, sub-block metadata, icons, and bounds remain
+authoritative in AMB source. The importer uses exact area,
 node, draw, and packet identities from the GLB and rejects structural changes
 rather than guessing how to rebuild them. All 54 tracked AMBs round-trip
 byte-for-byte through export and import, covering 1,446 areas and 6,143 native

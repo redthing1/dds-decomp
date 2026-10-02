@@ -40,7 +40,7 @@ label geometry
 model_items count=1
 model_item node_id=0 parent=-1 rotation=0,0,0 position=0,0,0,1 scale=1,1,1,0 bounds=null commands=null
 label material
-model_assets count=0
+model_materials count=0
 label opaque
 u32 0x12345678
 pointer @payload

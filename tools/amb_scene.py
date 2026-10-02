@@ -107,7 +107,7 @@ def append_automap_scene(
                 data,
                 f"area_{area_name}",
                 graph.items,
-                graph.assets,
+                graph.materials,
                 graph.draw_roots,
                 graph.draw_lists,
                 graph.draws,
@@ -200,16 +200,16 @@ def append_automap_scene(
                     matching_roots[0] if len(matching_roots) == 1 else None
                 ),
                 "ddsSubBlocks": subblocks,
-                "ddsAssets": [
+                "ddsMaterials": [
                     {
-                        "index": asset.index,
-                        "flags": asset.flags,
+                        "index": material.index,
+                        "flags": material.flags,
                         **{
                             field_name: list(values)
-                            for field_name, values in asset.fields
+                            for field_name, values in material.fields
                         },
                     }
-                    for asset in graph.assets
+                    for material in graph.materials
                 ],
             },
         }

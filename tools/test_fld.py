@@ -288,7 +288,7 @@ type id=2 count=1 resources=@resources
 label resources
 resource serial=0 flags=0 type=2 name=null reserved=0 transform=null area=null link=null sblock=null data=@model_resource
 label model_resource
-model_resource items=@items assets=@assets motion=@motion
+model_resource items=@items materials=@materials motion=@motion
 label items
 model_items count=2
 model_item node_id=0 parent=-1 rotation=0,0,0 position=0,0,0,1 scale=1,1,1,0 bounds=null commands=null
@@ -300,7 +300,7 @@ model_draw_set lists=@draw_list
 label draw_list
 model_draw_list selector=2 draws=@draw
 label draw
-model_draw asset=0 qwords=10 packet=@packet
+model_draw material=0 qwords=10 packet=@packet
 label packet
 mesh_header triangles=1 vertices=3 controls=0x1878,0x0360
 mesh_triangles
@@ -315,18 +315,21 @@ mesh_colors
 color 128,128,128,128 128,128,128,128 128,128,128,128
 mesh_program address=16
 vif_nops count=3
-label assets
-model_assets count=1
-model_asset index=0 word_01=0x80969696 resource_04=3 values_08=0,0,1,0.5,0 scalar_200=0.9
+label materials
+model_materials count=1
+model_material index=0 color_0=150,150,150,128 color_4=1,2,3,4 primary_texture=3 primary_uv_transform=0,0,1,0.5,0 scalar=0.9
 label motion
-model_motion_playbook clip_count=1 bindings=1 clips=@motion_clips
+model_motion_playbook clip_count=1 bindings=2 clips=@motion_clips
 model_motion_binding family=node selector=translation target=1
+model_motion_binding family=material selector=color_4 target=0
 label motion_clips
 model_motion_clip_table clips=@motion_clip
 label motion_clip
 model_motion_clip duration=30 reserved=0
 model_motion_track format=vector3 frames=0,30
 motion_vector3 0,0,0 10,20,30
+model_motion_track format=rgba8 frames=0,30
+motion_rgba8 1,2,3,4 5,6,7,8
 label data_end
 end_data
 """
@@ -335,9 +338,10 @@ end_data
         self.assertIn("model_items count=2", rendered)
         self.assertIn("node_id=1 parent=0", rendered)
         self.assertIn("model_bounds minimum=-1.0,-2.0,-3.0", rendered)
-        self.assertIn("model_asset index=0 word_01=0x80969696", rendered)
+        self.assertIn("model_material index=0 color_0=150,150,150,128", rendered)
+        self.assertIn("color_4=1,2,3,4", rendered)
         self.assertIn("model_draw_list selector=2", rendered)
-        self.assertIn("model_draw asset=0 qwords=10", rendered)
+        self.assertIn("model_draw material=0 qwords=10", rendered)
         self.assertIn("mesh_header triangles=1 vertices=3", rendered)
         self.assertIn("triangle 0,1,2,0", rendered)
         self.assertIn("position 0.0,0.0,0.0 1.0,0.0,0.0 0.0,1.0,0.0", rendered)
@@ -346,8 +350,9 @@ end_data
         self.assertIn("color 128,128,128,128", rendered)
         self.assertIn("mesh_program address=16", rendered)
         self.assertIn("vif_nops count=3", rendered)
-        self.assertIn("model_motion_playbook clip_count=1 bindings=1", rendered)
+        self.assertIn("model_motion_playbook clip_count=1 bindings=2", rendered)
         self.assertIn("family=node selector=translation target=1", rendered)
+        self.assertIn("family=material selector=color_4 target=0", rendered)
         self.assertIn("model_motion_track format=vector3 frames=0,30", rendered)
         self.assertEqual(fld.encode(fld.parse_source(rendered)), data)
 
@@ -365,8 +370,12 @@ end_data
             fld.encode(
                 fld.parse_source(source.replace("triangles=1", "triangles=2", 1))
             )
-        with self.assertRaisesRegex(fld.FldError, "only 1 assets exist"):
-            fld.encode(fld.parse_source(source.replace("model_draw asset=0", "model_draw asset=1")))
+        with self.assertRaisesRegex(fld.FldError, "only 1 materials exist"):
+            fld.encode(
+                fld.parse_source(
+                    source.replace("model_draw material=0", "model_draw material=1")
+                )
+            )
         with self.assertRaisesRegex(fld.FldError, "requires vector3, got float5"):
             fld.encode(
                 fld.parse_source(
@@ -382,13 +391,21 @@ end_data
         wrapped_data = fld.encode(fld.parse_source(wrapped_source))
         self.assertIn("frames=65535,0", fld.render_source(wrapped_data))
 
-        static_source = source.replace("bindings=1", "bindings=0", 1)
+        static_source = source.replace("bindings=2", "bindings=0", 1)
+        static_source = static_source.replace(
+            "model_motion_binding family=material selector=color_4 target=0\n", ""
+        )
         static_source = static_source.replace(
             "model_motion_binding family=node selector=translation target=1\n", ""
         )
         static_source = static_source.replace(
             "model_motion_track format=vector3 frames=0,30\n"
             "motion_vector3 0,0,0 10,20,30\n",
+            "",
+        )
+        static_source = static_source.replace(
+            "model_motion_track format=rgba8 frames=0,30\n"
+            "motion_rgba8 1,2,3,4 5,6,7,8\n",
             "",
         )
         static_data = fld.encode(fld.parse_source(static_source))

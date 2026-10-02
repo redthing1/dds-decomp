@@ -28,7 +28,7 @@ string16 "test_model"
 label transform
 transform position=100,200,300,1 rotation=0,0,0,1 scale=1,1,1,1
 label model
-model_resource items=@items assets=@assets motion=@motion
+model_resource items=@items materials=@materials motion=@motion
 label items
 model_items count=1
 model_item node_id=0 parent=-1 rotation=0,0,0 position=1,2,3,1 scale=1,1,1,0 bounds=@bounds commands=@draw_set
@@ -39,7 +39,7 @@ model_draw_set lists=@draw_list
 label draw_list
 model_draw_list selector=2 draws=@draw
 label draw
-model_draw asset=0 qwords=4 packet=@packet
+model_draw material=0 qwords=4 packet=@packet
 label packet
 mesh_header triangles=1 vertices=3 controls=0x1878,0x0360
 mesh_triangles
@@ -47,9 +47,9 @@ triangle 0,1,2,9
 mesh_positions
 position 0,0,0 100,0,0 0,100,0
 mesh_program address=12
-label assets
-model_assets count=1
-model_asset index=0
+label materials
+model_materials count=1
+model_material index=0
 label motion
 model_motion_playbook clip_count=1 bindings=1 clips=@clips
 model_motion_binding family=node selector=translation target=0
@@ -76,6 +76,7 @@ class FldModelTests(unittest.TestCase):
         )
         self.assertEqual(document["asset"]["version"], "2.0")
         self.assertEqual(document["asset"]["extras"]["ddsMetersPerUnit"], 0.01)
+        self.assertNotIn("ddsTextureCount", document["asset"]["extras"])
         self.assertEqual(len(document["meshes"]), 1)
         primitive = document["meshes"][0]["primitives"][0]
         self.assertEqual(set(primitive["attributes"]), {"POSITION"})
@@ -87,7 +88,7 @@ class FldModelTests(unittest.TestCase):
             document["nodes"][1]["extras"]["ddsMotionBindings"][0],
             {
                 "family": "node",
-                "selector": 0,
+                "selector": "translation",
                 "target": 0,
                 "format": "vector3",
             },
@@ -122,9 +123,11 @@ class FldModelTests(unittest.TestCase):
 
     def test_embeds_referenced_texture_and_expands_ps2_vertex_color(self) -> None:
         source = SOURCE.replace(
-            "model_asset index=0",
-            "model_asset index=0 resource_04=0 resource_20=0,1",
-        ).replace("model_draw asset=0 qwords=4", "model_draw asset=0 qwords=7").replace(
+            "model_material index=0",
+            "model_material index=0 primary_texture=0 secondary_texture=0,1",
+        ).replace(
+            "model_draw material=0 qwords=4", "model_draw material=0 qwords=7"
+        ).replace(
             "mesh_program address=12",
             "mesh_texcoords\n"
             "texcoord 0,0 1,0 0,1\n"
@@ -137,11 +140,17 @@ class FldModelTests(unittest.TestCase):
         document, binary = fld_model.build_gltf(
             fld.encode(fld.parse_source(source)), textures=(texture,)
         )
+        self.assertEqual(document["asset"]["extras"]["ddsTextureCount"], 1)
         primitive = document["meshes"][0]["primitives"][0]
         material = document["materials"][primitive["material"]]
-        self.assertEqual(material["pbrMetallicRoughness"]["baseColorTexture"], {"index": 0})
+        self.assertEqual(
+            material["pbrMetallicRoughness"]["baseColorTexture"], {"index": 0}
+        )
         self.assertEqual(material["alphaMode"], "BLEND")
-        self.assertEqual(material["extras"]["ddsSecondaryTextureMode"], 1)
+        self.assertEqual(
+            material["extras"]["ddsMaterialFields"]["secondary_texture"],
+            [0, 1],
+        )
         image_view = document["bufferViews"][document["images"][0]["bufferView"]]
         image_header = binary[
             image_view["byteOffset"] : image_view["byteOffset"] + 8
@@ -155,7 +164,9 @@ class FldModelTests(unittest.TestCase):
         )
 
     def test_rejects_missing_asset_texture(self) -> None:
-        source = SOURCE.replace("model_asset index=0", "model_asset index=0 resource_04=1")
+        source = SOURCE.replace(
+            "model_material index=0", "model_material index=0 primary_texture=1"
+        )
         texture = tmx.Texture(0, 8, 8, 0x01, bytes((0, 0, 0, 0xFF)) * 64)
         with self.assertRaisesRegex(fld.FldError, "references texture 1"):
             fld_model.build_gltf(

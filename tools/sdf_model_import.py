@@ -37,12 +37,15 @@ class ImportSummary:
     texcoords: int
     attributes: int
     colors: int
+    materials: int
+    changed_materials: int
 
 
 @dataclass(frozen=True)
 class ModelGraph:
     name: str
     items: tuple[fld.ModelItem, ...]
+    materials: tuple[fld.ModelMaterial, ...]
     draw_roots: dict[int, tuple[int, ...]]
     draw_lists: dict[int, fld.ModelDrawList]
     draws: dict[int, fld.ModelDraw]
@@ -176,7 +179,7 @@ def _f32(value: float) -> float:
         ) from exc
 
 
-def _asset_metadata(document: dict) -> float:
+def _asset_metadata(document: dict) -> tuple[float, int | None]:
     asset = document.get("asset")
     extras = asset.get("extras") if isinstance(asset, dict) else None
     if not isinstance(extras, dict):
@@ -186,7 +189,14 @@ def _asset_metadata(document: dict) -> float:
         raise ModelImportError("GLB has no positive finite DDS unit scale")
     if extras.get("ddsNativeAxesPreserved") is not True:
         raise ModelImportError("GLB does not preserve native DDS axes")
-    return float(scale)
+    texture_count = extras.get("ddsTextureCount")
+    if texture_count is not None and (
+        not isinstance(texture_count, int)
+        or isinstance(texture_count, bool)
+        or texture_count < 0
+    ):
+        raise ModelImportError("GLB has an invalid DDS texture count")
+    return float(scale), texture_count
 
 
 def import_model_graphs(
@@ -195,9 +205,9 @@ def import_model_graphs(
     binary: bytes,
     graphs: tuple[ModelGraph, ...],
 ) -> tuple[bytes, ImportSummary]:
-    """Apply changed vertex attributes while preserving SDF packet structure."""
+    """Apply changed material and vertex data without rebuilding SDF packets."""
 
-    meters_per_unit = _asset_metadata(document)
+    meters_per_unit, texture_count = _asset_metadata(document)
     meshes = document.get("meshes")
     if not isinstance(meshes, list):
         raise ModelImportError("GLB has no mesh array")
@@ -217,6 +227,161 @@ def import_model_graphs(
             meshes_by_name[name] = mesh
 
     output = bytearray(source_data)
+    gltf_materials = document.get("materials")
+    if not isinstance(gltf_materials, list):
+        raise ModelImportError("GLB has no material array")
+    material_specs = {
+        name: (kind, width)
+        for _, name, kind, width in fld.MODEL_MATERIAL_FIELDS
+    }
+    material_indices: dict[tuple[str, int], set[int]] = {}
+    changed_materials: set[tuple[str, int]] = set()
+    material_count = 0
+
+    def material_values(
+        value: object,
+        kind: str,
+        width: int,
+        context: str,
+    ) -> tuple[int | float, ...]:
+        if not isinstance(value, list) or len(value) != width:
+            raise ModelImportError(f"{context} has an incompatible value")
+        if kind in {"rgba8", "resource", "resource_pair"}:
+            limit = 0xFF if kind == "rgba8" else 0xFFFF
+            if any(
+                not isinstance(item, int) or not 0 <= item <= limit
+                for item in value
+            ):
+                raise ModelImportError(f"{context} has an out-of-range integer")
+            return tuple(value)
+        if kind == "float":
+            if any(
+                not isinstance(item, (int, float))
+                or isinstance(item, bool)
+                or not math.isfinite(item)
+                for item in value
+            ):
+                raise ModelImportError(f"{context} has a non-finite value")
+            return tuple(_f32(float(item)) for item in value)
+        raise AssertionError(kind)
+
+    for graph in graphs:
+        used = set()
+        for draw in graph.draws.values():
+            packet_meshes, _ = fld._read_model_mesh_packet(
+                source_data,
+                draw.packet,
+                draw.quadwords * 0x10,
+                f"model {graph.name} packet",
+            )
+            if packet_meshes:
+                used.add(draw.material)
+        represented: dict[int, tuple[tuple[str, tuple[int | float, ...]], ...]] = {}
+        represented_indices: dict[int, set[int]] = {}
+        for gltf_index, material in enumerate(gltf_materials):
+            if not isinstance(material, dict):
+                continue
+            extras = material.get("extras")
+            if (
+                not isinstance(extras, dict)
+                or extras.get("ddsModelGraph") != graph.name
+            ):
+                continue
+            native_index = extras.get("ddsMaterialIndex")
+            if not isinstance(native_index, int) or not 0 <= native_index < len(
+                graph.materials
+            ):
+                raise ModelImportError(
+                    f"model {graph.name} has a GLB material with an invalid DDS index"
+                )
+            if native_index not in used:
+                raise ModelImportError(
+                    f"model {graph.name} exposes unused material {native_index}"
+                )
+            source_material = graph.materials[native_index]
+            if extras.get("ddsMaterialFlags") != source_material.flags:
+                raise ModelImportError(
+                    f"model {graph.name} material {native_index} "
+                    "changes its field layout"
+                )
+            fields = extras.get("ddsMaterialFields")
+            source_fields = dict(source_material.fields)
+            if not isinstance(fields, dict) or set(fields) != set(source_fields):
+                raise ModelImportError(
+                    f"model {graph.name} material {native_index} changes its fields"
+                )
+            values = tuple(
+                (
+                    field_name,
+                    material_values(
+                        fields[field_name],
+                        *material_specs[field_name],
+                        f"model {graph.name} material {native_index} {field_name}",
+                    ),
+                )
+                for field_name, _ in source_material.fields
+            )
+            old = represented.get(native_index)
+            if old is not None and old != values:
+                raise ModelImportError(
+                    f"model {graph.name} material {native_index} variants disagree"
+                )
+            represented[native_index] = values
+            represented_indices.setdefault(native_index, set()).add(gltf_index)
+
+        missing = used - set(represented)
+        if missing:
+            raise ModelImportError(
+                f"model {graph.name} is missing DDS materials "
+                + ", ".join(str(index) for index in sorted(missing))
+            )
+        material_count += len(used)
+        for native_index in used:
+            source_material = graph.materials[native_index]
+            old_fields = dict(source_material.fields)
+            offsets = dict(source_material.field_offsets)
+            changed = False
+            for field_name, values in represented[native_index]:
+                old_values = old_fields[field_name]
+                if values == old_values:
+                    continue
+                if field_name in {"primary_texture", "secondary_texture"}:
+                    old_index = old_values[0]
+                    new_index = values[0]
+                    if new_index != old_index:
+                        if texture_count is None:
+                            raise ModelImportError(
+                                f"model {graph.name} material {native_index} "
+                                "changes a texture reference without bundle metadata"
+                            )
+                        if new_index >= texture_count:
+                            raise ModelImportError(
+                                f"model {graph.name} material {native_index} "
+                                f"references texture {new_index}, but the bundle has "
+                                f"{texture_count} textures"
+                            )
+                kind, width = material_specs[field_name]
+                offset = offsets[field_name]
+                if kind == "rgba8":
+                    struct.pack_into("<4B", output, offset, *values)
+                elif kind == "float":
+                    for index, (value, old_value) in enumerate(
+                        zip(values, old_values, strict=True)
+                    ):
+                        if value != old_value:
+                            struct.pack_into("<f", output, offset + index * 4, value)
+                elif kind == "resource":
+                    struct.pack_into("<H", output, offset, values[0])
+                elif kind == "resource_pair":
+                    struct.pack_into("<2H", output, offset, *values)
+                else:
+                    raise AssertionError(kind)
+                changed = True
+            key = graph.name, native_index
+            material_indices[key] = represented_indices[native_index]
+            if changed:
+                changed_materials.add(key)
+
     stream_values: dict[tuple[int, str], tuple[tuple[int | float, ...], ...]] = {}
     mesh_keys: set[tuple[int, int, int]] = set()
     changed_meshes: set[tuple[int, int, int]] = set()
@@ -366,9 +531,15 @@ def import_model_graphs(
                     source_mesh,
                 ) = expected
                 context = f"mesh {mesh_name!r} primitive {len(mesh_keys)}"
+                if primitive.get("material") not in material_indices[
+                    graph.name, draw.material
+                ]:
+                    raise ModelImportError(
+                        f"{context} changes its DDS material assignment"
+                    )
                 extras = primitive.get("extras")
                 metadata = {
-                    "ddsAsset": draw.asset,
+                    "ddsMaterial": draw.material,
                     "ddsDrawSelector": draw_list.selector,
                     "ddsDrawListIndex": list_index,
                     "ddsDrawIndex": draw_index,
@@ -525,4 +696,6 @@ def import_model_graphs(
         changes["texcoords"],
         changes["attributes"],
         changes["colors"],
+        material_count,
+        len(changed_materials),
     )
