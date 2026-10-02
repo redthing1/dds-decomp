@@ -155,6 +155,7 @@ def _add_collision_mesh(
         maximum=[max(indices)],
     )
     extras = {
+        "ddsVertexCount": vertex_count,
         "ddsFaceCount": face_count,
         "ddsTriangleCount": triangles,
         "ddsExtraCount": extra_count,

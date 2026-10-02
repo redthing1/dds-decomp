@@ -97,6 +97,7 @@ class FldSceneTests(unittest.TestCase):
         indices = struct.unpack_from("<6H", binary, view["byteOffset"])
         self.assertEqual(indices, (0, 1, 2, 0, 2, 3))
         self.assertEqual(collision["extras"]["ddsTriangleCount"], 2)
+        self.assertEqual(collision["extras"]["ddsVertexCount"], 4)
         self.assertEqual(
             collision["extras"]["ddsAutomapFaces"],
             [

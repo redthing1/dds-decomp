@@ -416,10 +416,10 @@ described in [`wap.md`](wap.md). It emits deterministic JSON or Graphviz DOT;
 non-field transition types remain in the per-scene metadata until their target
 identity is independently established.
 
-### Static transform import
+### Collision geometry and transform import
 
-`tools/fld_scene_import.py` applies edited static transforms from a composed
-GLB back to FLD2 source:
+`tools/fld_scene_import.py` applies edited collision vertices and static
+transforms from a composed GLB back to FLD2 source:
 
 ```sh
 python3 tools/fld_scene_import.py edited-field.glb \
@@ -427,20 +427,27 @@ python3 tools/fld_scene_import.py edited-field.glb \
 ```
 
 Collision, camera, and placement nodes are identified by their FLD2 resource
-type, serial, and exact name. Translation is converted back through the GLB's
-recorded unit scale; quaternion rotations are normalized; and three-component
-scale is copied directly. The importer requires native DDS axes and editable
-TRS properties, rejects matrix nodes and identity mismatches, and validates the
-rebuilt FLD2 before writing. Components that still equal the exported values
-retain their original float bits, including signed zero and unrepresented
-fourth components.
+type, serial, flags, and exact name. Translation is converted back through the
+GLB's recorded unit scale; quaternion rotations are normalized; and
+three-component scale is copied directly. Collision `POSITION` edits use the
+same unit conversion and preserve each native vertex's unrepresented fourth
+float. The importer verifies the vertex count, triangle topology, collision
+metadata, and channel layout against the source, so glTF cannot silently alter
+the face controls that carry automap, encounter, sound, floor, and other game
+semantics.
 
-This edit path is intentionally bounded to the static FLD2 resource transforms
-represented without loss in glTF. FLD1 mesh streams use the separate model
+The importer requires native DDS axes and editable TRS properties, rejects
+matrix nodes and identity mismatches, and validates the rebuilt FLD2 before
+writing. Coordinates and transform components that still equal the exported
+values retain their original float bits, including signed zero and
+unrepresented fourth components.
+
+Collision face topology and controls remain in `.fldasm`, where their native
+meaning is represented without loss. FLD1 mesh streams use the separate model
 geometry importer above; FLD1 hierarchy and animation, AMB geometry, and
 textures remain under their exact source tools. An unchanged scene imports
-byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering
-17,282 collision, camera, and placement transforms.
+byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering 5,533
+collision meshes and 17,282 collision, camera, and placement transforms.
 
 The scene layer validates all 1,232 supported FLD2 payload occurrences across
 both games: 5,533 collision resources and 167,623 output triangles, 1,551
