@@ -258,6 +258,6 @@ void func_002C92D0(u32 arg0) {
     func_0034FCE0(arg0, 0);
 }
 
-s32 D_00437CC0[2] __attribute__((section(".sdata"))) = { 0 };
+FileManGuardState D_00437CC0 __attribute__((section(".sdata"))) = { 0 };
 
 char D_00437CC8[8] __attribute__((section(".sdata"))) = "fileMan";
