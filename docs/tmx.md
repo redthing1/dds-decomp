@@ -1,16 +1,52 @@
 # Field texture bundles (`TBN`, `TXP0`, and `TMX0`)
 
-`tools/tmx.py` decodes the texture bundle paired with a field's FLD1 models.
-It accepts either the complete type-9 TBN packet or its embedded TXP0 payload
-and writes one RGBA PNG per texture:
+`tools/tmx.py` assembles exact texture source and decodes the texture bundle
+paired with a field's FLD1 models. The extractor accepts either the complete
+type-9 TBN packet or its embedded TXP0 payload and writes one RGBA PNG per
+texture:
 
 ```sh
-python3 tools/tmx.py extracted/f011_001.tbn textures/f011_001
+python3 tools/tmx.py extract extracted/f011_001.tbn textures/f011_001
 ```
 
 The decoder uses only the Python standard library. It checks every packet
 boundary, texture offset, header profile, palette size, mip level, and pixel
 payload before writing output.
+
+## Exact source
+
+A complete TBN packet can be converted to text and rebuilt byte for byte:
+
+```sh
+python3 tools/tmx.py disassemble extracted/f011_001.tbn f011_001.tbnasm
+python3 tools/tmx.py assemble f011_001.tbnasm rebuilt/f011_001.tbn
+python3 tools/tmx.py verify extracted/f011_001.tbn
+```
+
+The source records the image dimensions, GS pixel mode, palette format, mip
+count, texture flags, and exact packed image payload. Packet sizes, offsets,
+type tags, fixed words, and alignment are derived by the assembler:
+
+```text
+tbn 1
+texture index=0 width=128 height=128 psm=PSMT8 mipmaps=0 clut=PSMCT32 flags=0x0f65
+data 0000000000000000000000000000000000000000000000000000000000000000
+...
+end_texture
+```
+
+The packed data stays hexadecimal so that it preserves palettes, indexed
+pixels, mip levels, and console-native channel values exactly. PNG extraction
+provides the convenient visual representation. The paired DDS1 and DDS2
+sources under `src/<v>/data/field/` participate in the normal field-data build
+and replace the TBN entry when the exact LB archive is rebuilt.
+
+Every archived bundle has also passed the same source round trip: 551 DDS1
+bundles containing 6,395 textures and 566 DDS2 bundles containing 9,111
+textures. Tracking all of that packed image data as hexadecimal would expand
+about 631 MB of binaries to about 1.38 GB of text, so the repository carries
+paired source examples while the complete corpus remains the format-coverage
+gate.
 
 ## Container layout
 

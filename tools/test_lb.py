@@ -157,6 +157,7 @@ class LbCodecTests(unittest.TestCase):
                 source = lb.parse_source(path.read_text(encoding="utf-8"))
                 self.assertEqual(source.base_sha1, digest)
                 self.assertEqual([entry.extension for entry in source.entries], ["TBN", "F2", "F1"])
+                self.assertEqual(source.entries[0].source, "f011_001.tbn")
                 self.assertEqual(source.entries[1].source, "f011_001.f2")
 
 
