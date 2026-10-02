@@ -258,7 +258,6 @@ void func_002C92D0(u32 arg0) {
     func_0034FCE0(arg0, 0);
 }
 
-INCLUDE_SDATA(const s32, "game/code_002C83F0", D_00437CC0);
+s32 D_00437CC0[2] __attribute__((section(".sdata"))) = { 0 };
 
-INCLUDE_SDATA(const s32, "game/code_002C83F0", D_00437CC8);
-
+char D_00437CC8[8] __attribute__((section(".sdata"))) = "fileMan";
