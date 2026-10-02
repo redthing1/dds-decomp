@@ -373,6 +373,31 @@ described in [`wap.md`](wap.md). It emits deterministic JSON or Graphviz DOT;
 non-field transition types remain in the per-scene metadata until their target
 identity is independently established.
 
+### Static transform import
+
+`tools/fld_scene_import.py` applies edited static transforms from a composed
+GLB back to FLD2 source:
+
+```sh
+python3 tools/fld_scene_import.py edited-field.glb \
+  src/dds1/data/field/f011_001.fldasm edited-f011_001.fldasm
+```
+
+Collision, camera, and placement nodes are identified by their FLD2 resource
+type, serial, and exact name. Translation is converted back through the GLB's
+recorded unit scale; quaternion rotations are normalized; and three-component
+scale is copied directly. The importer requires native DDS axes and editable
+TRS properties, rejects matrix nodes and identity mismatches, and validates the
+rebuilt FLD2 before writing. Components that still equal the exported values
+retain their original float bits, including signed zero and unrepresented
+fourth components.
+
+This edit path is intentionally bounded to the static FLD2 resource transforms
+represented without loss in glTF. FLD1 model hierarchy, mesh data, animation,
+AMB geometry, and textures remain under their exact source tools. An unchanged
+scene imports byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources,
+covering 17,282 collision, camera, and placement transforms.
+
 The scene layer validates all 1,232 supported FLD2 payload occurrences across
 both games: 5,533 collision resources and 167,623 output triangles, 1,551
 cameras, and 10,222 placements. The paired DDS1 and DDS2 composed fields pass
