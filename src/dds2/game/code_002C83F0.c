@@ -31,27 +31,6 @@ struct FileCbNode {
     FileCbNode *next;
 };
 
-typedef struct FileManSlot {
-    s32 completedBytes;
-    void *request;
-} FileManSlot;
-
-/* Work area behind the fileMan task (D_003DC658, 0x40 bytes). */
-typedef struct FileManWork {
-    s32 sema;   /* 0x00 */
-    u8 unk4;    /* 0x04 */
-    u8 unk5;    /* 0x05 */
-    u8 unk6;    /* 0x06 */
-    u8 unk7;    /* 0x07 */
-    void *unk8; /* 0x08 */
-    u32 unkC;   /* 0x0C */
-    FileCbNode *unk10; /* 0x10: completed callbacks */
-    void *unk14; /* 0x14 */
-    u32 unk18;  /* 0x18 */
-    s32 unk1C;  /* 0x1C */
-    FileManSlot slots[4]; /* 0x20 */
-} FileManWork;
-
 /* Async job handled by func_002C83F0 and friends. */
 typedef struct FileJob {
     u8 unk0;      /* 0x00 */
@@ -68,8 +47,6 @@ typedef struct FileJob {
     u16 stateRequired; /* 0x68 */
     u16 slot; /* 0x6A */
 } FileJob;
-
-extern FileManWork fileManagerWork;
 
 s32 WaitSema(s32 sema);
 
@@ -197,8 +174,8 @@ void fileManDispatchDone(void) {
     FileCbNode *node;
 
     WaitSema(work->sema);
-    while ((node = work->unk10) != NULL) {
-        work->unk10 = node->next;
+    while ((node = work->done) != NULL) {
+        work->done = node->next;
         SignalSema(work->sema);
         node->cb(node, node->arg);
         WaitSema(work->sema);
@@ -216,9 +193,9 @@ u32 fileMan(void) {
 
 void fileManInit(void) {
     memset(&fileManagerWork, 0, 0x40);
-    fileManagerWork.unk7 = 4;
+    fileManagerWork.freeSlots = 4;
     fileManagerWork.sema = sdfCreateSemaphore(1, 0x7F, 0);
-    fileManagerWork.unk1C = sdfResourceRetainAddress(sdfAllocGeneralBlock(0x40000));
+    fileManagerWork.buffer = sdfResourceRetainAddress(sdfAllocGeneralBlock(0x40000));
     kwlnTaskCreate((s32)&D_00437CC8, 0x384, 1, 0, (s32)&fileMan, 0, 0);
     fileIdleUpdateCallback = fileManUpdate;
 }
