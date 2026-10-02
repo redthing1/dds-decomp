@@ -258,11 +258,11 @@ vertex -3600.0 -10.0 -600.000244140625 1.0
 vertex -3600.0 -10.0 599.999755859375 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,3 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,3 vertices=4,5,7,6 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=3,3 vertices=8,9,11,10 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=4,3 vertices=12,8,14,13 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=6,3 vertices=15,16,17,12 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=3 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=3 vertices=4,5,7,6 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=3 automap_upper_name=3 vertices=8,9,11,10 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=4 automap_upper_name=3 vertices=12,8,14,13 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=6 automap_upper_name=3 vertices=15,16,17,12 encounter_type=0 encounter=0 special=0,0
 
 zeros 12
 label r_01map_01_stop

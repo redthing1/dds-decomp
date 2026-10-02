@@ -192,10 +192,10 @@ vertex -1000.0 -20.0 -2300.0 1.0
 vertex 900.0 -20.0 -2300.0 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,2 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=3,2 vertices=4,5,6,7 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=4,2 vertices=8,9,7,10 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,2 vertices=11,12,5,4 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=2 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=3 automap_upper_name=2 vertices=4,5,6,7 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=4 automap_upper_name=2 vertices=8,9,7,10 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=2 vertices=11,12,5,4 encounter_type=0 encounter=0 special=0,0
 
 label r_01map_01_stop
 bytes 0000000000000000000000000000000043616d65000000000000000000000000

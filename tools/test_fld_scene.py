@@ -47,7 +47,7 @@ vertex 100 0 0 1
 vertex 100 0 100 1
 vertex 0 0 100 1
 label faces
-face attributes=0x00002000 move_floor=0 sound=0 stop=0 place=0 automap=1,1 vertices=0,1,2,3 encounter_zone=7 special=0,0
+face attributes=0x00002800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=2 vertices=0,1,2,3 encounter_zone=7 special=0,0
 label camera
 camera fovy=0.7853981852531433
 label placement
@@ -94,6 +94,18 @@ class FldSceneTests(unittest.TestCase):
         indices = struct.unpack_from("<6H", binary, view["byteOffset"])
         self.assertEqual(indices, (0, 1, 2, 0, 2, 3))
         self.assertEqual(collision["extras"]["ddsTriangleCount"], 2)
+        self.assertEqual(
+            collision["extras"]["ddsAutomapFaces"],
+            [
+                {
+                    "face": 0,
+                    "firstTriangle": 0,
+                    "triangleCount": 2,
+                    "block": 1,
+                    "upperName": 2,
+                }
+            ],
+        )
         self.assertIn("KHR_materials_unlit", document["extensionsUsed"])
         fld_model.encode_glb(document, binary)
 

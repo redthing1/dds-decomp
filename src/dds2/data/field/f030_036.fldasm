@@ -175,8 +175,8 @@ vertex 2400.0 -30.0 300.0 1.0
 vertex 2400.0 -30.0 -300.0 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,4 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,4 vertices=4,5,7,6 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=4 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=4 vertices=4,5,7,6 encounter_type=0 encounter=0 special=0,0
 
 zeros 8
 label r_01map_01_stop
@@ -379,7 +379,7 @@ vertex 3100.0 -830.0 400.0 1.0
 vertex 3100.0 -830.0 -400.0 1.0
 
 label r_01map_02_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=3,5 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=3 automap_upper_name=5 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
 
 zeros 12
 label r_01map_02_stop

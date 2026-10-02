@@ -144,20 +144,20 @@ vertex -1040.0 -9.99993896484375 -2480.0 1.0
 vertex 1960.0 -9.99993896484375 -1040.0 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,4 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,4 vertices=4,5,6,7 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=3,4 vertices=8,9,10,11 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=5,4 vertices=12,13,3,2 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=5,4 vertices=14,15,12,2 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=5,4 vertices=16,17,3,13 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=4,4 vertices=18,19,15,14 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=6,4 vertices=20,21,17,16 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=6,4 vertices=22,23,17,21 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=7,4 vertices=24,25,26,27 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=8,4 vertices=28,24,29,30 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=10,4 vertices=31,32,33,34 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=11,4 vertices=35,36,37,38 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=9,4 vertices=39,30,33,32 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=4 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=4 vertices=4,5,6,7 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=3 automap_upper_name=4 vertices=8,9,10,11 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=5 automap_upper_name=4 vertices=12,13,3,2 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=5 automap_upper_name=4 vertices=14,15,12,2 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=5 automap_upper_name=4 vertices=16,17,3,13 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=4 automap_upper_name=4 vertices=18,19,15,14 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=6 automap_upper_name=4 vertices=20,21,17,16 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=6 automap_upper_name=4 vertices=22,23,17,21 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=7 automap_upper_name=4 vertices=24,25,26,27 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=8 automap_upper_name=4 vertices=28,24,29,30 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=10 automap_upper_name=4 vertices=31,32,33,34 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=11 automap_upper_name=4 vertices=35,36,37,38 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=9 automap_upper_name=4 vertices=39,30,33,32 encounter_type=0 encounter=0 special=0,0
 
 zeros 8
 label r_01map_01_stop

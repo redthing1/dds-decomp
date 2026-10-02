@@ -34,6 +34,7 @@ AREA_SIZE = 0x20
 COLLISION_SIZE = 0x30
 VERTEX_SIZE = 0x10
 FACE_SIZE = 0x24
+AUTOMAP_ATTRIBUTE = 0x0800
 ENCOUNTER_ZONE_ATTRIBUTE = 0x2000
 STRING_SIZE = 0x10
 EFFECT_SIZE = 0x30
@@ -306,6 +307,29 @@ def _face_encounter_zone(face: tuple[int, ...], face_index: int) -> int | None:
             f"collision face {face_index} has encounter values "
             f"{{{encounter_type}, {zone}}} without attribute "
             f"0x{ENCOUNTER_ZONE_ATTRIBUTE:x}"
+        )
+    return None
+
+
+def _face_automap(
+    face: tuple[int, ...], face_index: int
+) -> tuple[int, int] | None:
+    """Return a tagged face's one-based block and upper-name selectors."""
+
+    tagged = bool(face[0] & AUTOMAP_ATTRIBUTE)
+    block, upper_name = face[5], face[6]
+    if tagged:
+        if not (0 < block < 0x40 and 0 < upper_name < 0x40):
+            raise FldError(
+                f"collision face {face_index} automap tag is "
+                f"{{{block}, {upper_name}}}, expected two selectors in 1..63"
+            )
+        return block, upper_name
+    if block != 0 or upper_name != 0:
+        raise FldError(
+            f"collision face {face_index} has automap values "
+            f"{{{block}, {upper_name}}} without attribute "
+            f"0x{AUTOMAP_ATTRIBUTE:x}"
         )
     return None
 
@@ -1048,6 +1072,7 @@ def validate(data: bytes) -> None:
                         raise FldError(
                             f"collision face {face_index} vertex {vertex} exceeds {vertex_count}"
                         )
+                _face_automap(face, face_index)
                 _face_encounter_zone(face, face_index)
         elif resource.type_id == 4 and resource.data:
             _range(data, resource.data, 4, "camera resource")
@@ -1757,6 +1782,13 @@ def render_source(data: bytes) -> str:
             _range(data, faces, face_count * FACE_SIZE, stem + " faces")
             for index in range(face_count):
                 values = struct.unpack_from("<IBBH HBB 4I hhhh", data, faces + index * FACE_SIZE)
+                if values[0] & AUTOMAP_ATTRIBUTE:
+                    automap = (
+                        f"automap_block={values[5]} "
+                        f"automap_upper_name={values[6]} "
+                    )
+                else:
+                    automap = f"automap={values[5]},{values[6]} "
                 if values[0] & ENCOUNTER_ZONE_ATTRIBUTE:
                     encounter = f"encounter_zone={values[12]}"
                 else:
@@ -1764,7 +1796,7 @@ def render_source(data: bytes) -> str:
                 face_lines.append(
                     "face "
                     f"attributes=0x{values[0]:08x} move_floor={values[1]} sound={values[2]} "
-                    f"stop={values[3]} place={values[4]} automap={values[5]},{values[6]} "
+                    f"stop={values[3]} place={values[4]} {automap}"
                     f"vertices={values[7]},{values[8]},{values[9]},{values[10]} "
                     f"{encounter} "
                     f"special={values[13]},{values[14]}"
@@ -2832,13 +2864,31 @@ def encode(operations: tuple[Operation, ...]) -> bytes:
             f = _fields(operation.args)
             common = {
                 "attributes", "move_floor", "sound", "stop", "place",
-                "automap", "vertices", "special",
+                "vertices", "special",
             }
+            semantic_automap = {"automap_block", "automap_upper_name"}
+            if semantic_automap & set(f):
+                if not semantic_automap <= set(f):
+                    raise FldError(
+                        f"line {operation.line}: automap_block and "
+                        "automap_upper_name must be specified together"
+                    )
+                automap = (
+                    _int(f["automap_block"]),
+                    _int(f["automap_upper_name"]),
+                )
+                automap_fields = semantic_automap
+            elif "automap" in f:
+                automap = _csv(f["automap"], 2)
+                automap_fields = {"automap"}
+            else:
+                automap = (0, 0)
+                automap_fields = set()
             if "encounter_zone" in f:
-                required = common | {"encounter_zone"}
+                required = common | automap_fields | {"encounter_zone"}
                 encounter_type, encounter_zone = 1, _int(f["encounter_zone"])
             else:
-                required = common | {"encounter_type", "encounter"}
+                required = common | automap_fields | {"encounter_type", "encounter"}
                 encounter_type = _int(f["encounter_type"])
                 encounter_zone = _int(f["encounter"])
             if set(f) != required:
@@ -2852,7 +2902,7 @@ def encode(operations: tuple[Operation, ...]) -> bytes:
                 struct.pack(
                     "<IBBH HBB 4I hhhh",
                     _int(f["attributes"]), _int(f["move_floor"]), _int(f["sound"]), _int(f["stop"]), _int(f["place"]),
-                    *_csv(f["automap"], 2), *_csv(f["vertices"], 4), encounter_type, encounter_zone, *_csv(f["special"], 2),
+                    *automap, *_csv(f["vertices"], 4), encounter_type, encounter_zone, *_csv(f["special"], 2),
                 )
             )
         elif name == "camera":

@@ -223,8 +223,8 @@ vertex 3899.998779296875 -10.001810073852539 -900.0020751953125 1.0
 vertex 3900.000244140625 -10.002055168151855 1899.9979248046875 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,2 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,2 vertices=4,5,1,0 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=2 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=2 vertices=4,5,1,0 encounter_type=0 encounter=0 special=0,0
 
 zeros 8
 label r_01map_01_stop

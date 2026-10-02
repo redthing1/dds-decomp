@@ -75,8 +75,8 @@ vertex 6000.02392578125 -10.0 -500.0 1.0
 vertex 5999.97607421875 -10.0 1000.0 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,7 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=2,7 vertices=4,5,2,1 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=7 vertices=0,1,2,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=2 automap_upper_name=7 vertices=4,5,2,1 encounter_type=0 encounter=0 special=0,0
 
 zeros 8
 label r_01map_01_stop

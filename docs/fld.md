@@ -330,8 +330,10 @@ hides the geometry while retaining the nodes and metadata.
 Collision quads are triangulated as `(0,1,2)` and `(0,2,3)`; the retail
 `0xffffffff` fourth-index sentinel selects a single triangle. Source face
 controls remain authoritative in the FLD2 source, while mesh extras record
-face and triangle counts. Unit conversion is shared with the model exporter,
-so both layers stay in the same coordinate space and DDS axes remain intact.
+face and triangle counts. Tagged polygons also appear in `ddsAutomapFaces`
+with their source face index, output triangle range, discovery block, and upper
+name selector. Unit conversion is shared with the model exporter, so both
+layers stay in the same coordinate space and DDS axes remain intact.
 
 The scene layer validates all 1,232 supported FLD2 payload occurrences across
 both games: 5,533 collision resources and 167,623 output triangles, 1,551
@@ -347,13 +349,27 @@ A face records four vertex indices plus the field controls exposed in source:
 
 ```text
 face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 \
-  automap=1,1 vertices=0,1,3,2 \
+  automap_block=1 automap_upper_name=1 vertices=0,1,3,2 \
   encounter_type=0 encounter=0 special=0,0
 ```
 
 The assembler rejects an out-of-range vertex index, except for the retail
 `0xffffffff` triangle sentinel. Event placements likewise must refer to an
 event resource present in the same file.
+
+Attribute `0x800` makes the two face bytes active. When the player enters the
+polygon, the runtime treats `automap_block` as a one-based discovery-bit
+selector in the current area and uses `automap_upper_name` to update the upper
+map banner. Both selectors must be in `1..63`; an untagged face retains the
+explicit raw `automap=0,0` pair. The assembler rejects a tag without both
+selectors and nonzero selectors without the tag. All 5,065 tagged faces in the
+tracked DDS1 and DDS2 corpora satisfy this invariant.
+
+The discovery selector is not a universal ordinal link to an AMB sub-block.
+The runtime attempts that lookup to derive a floor value, but returns its
+default when no corresponding record exists; the retail corpus uses that path.
+The source therefore records the verified identities without manufacturing a
+false cross-resource reference.
 
 Faces that override the area's random-encounter zone use a semantic form:
 

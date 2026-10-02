@@ -91,6 +91,7 @@ def _add_collision_mesh(
 
     indices: list[int] = []
     triangles = 0
+    automap_faces: list[dict[str, int]] = []
     for face_index in range(face_count):
         face = struct.unpack_from(
             "<IBBH HBB 4I hhhh", data, faces_offset + face_index * fld.FACE_SIZE
@@ -100,11 +101,24 @@ def _add_collision_mesh(
             raise fld.FldError(
                 f"collision {name} face {face_index} has a sentinel before its fourth vertex"
             )
+        first_triangle = triangles
         indices.extend(corners[:3])
         triangles += 1
         if corners[3] != 0xFFFFFFFF:
             indices.extend((corners[0], corners[2], corners[3]))
             triangles += 1
+        automap_link = fld._face_automap(face, face_index)
+        if automap_link is not None:
+            block, upper_name = automap_link
+            automap_faces.append(
+                {
+                    "face": face_index,
+                    "firstTriangle": first_triangle,
+                    "triangleCount": triangles - first_triangle,
+                    "block": block,
+                    "upperName": upper_name,
+                }
+            )
     if not vertices or not indices:
         return None
 
@@ -135,6 +149,14 @@ def _add_collision_mesh(
         minimum=[min(indices)],
         maximum=[max(indices)],
     )
+    extras = {
+        "ddsFaceCount": face_count,
+        "ddsTriangleCount": triangles,
+        "ddsExtraCount": extra_count,
+        "ddsHasStopData": bool(stop),
+    }
+    if automap_faces:
+        extras["ddsAutomapFaces"] = automap_faces
     mesh_index = len(builder.document["meshes"])
     builder.document["meshes"].append(
         {
@@ -147,12 +169,7 @@ def _add_collision_mesh(
                     "mode": 4,
                 }
             ],
-            "extras": {
-                "ddsFaceCount": face_count,
-                "ddsTriangleCount": triangles,
-                "ddsExtraCount": extra_count,
-                "ddsHasStopData": bool(stop),
-            },
+            "extras": extras,
         }
     )
     return mesh_index
