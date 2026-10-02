@@ -16,7 +16,7 @@ typedef struct FileReqEntry {
 
 extern FileReqEntry fileRequestEntries[];
 
-extern s32 D_00437CC0;
+extern s32 fileManGuardActive __asm__("D_00437CC0");
 extern s32 D_00439000;
 
 void fileReqInit(s32 request);
@@ -104,19 +104,19 @@ s32 func_002C83F0(void *deviceRequest, s32 event, s32 unused, s32 byteCount, Fil
         if (job->stateRequired != 0) {
             job->state = 5;
         } else {
-            work->slots[job->slot].completedBytes = byteCount;
+            work->slots[job->slot].value = byteCount;
             job->transferBytes -= byteCount;
             if (job->transferBytes == 0) {
                 job->state = 5;
-                work->unk8 = job->unk4;
+                work->head = (struct FileNode *)job->unk4;
                 if (job->unk4 == NULL) {
-                    work->unkC = 0;
+                    work->tail = NULL;
                 }
             } else {
                 job->state = FILE_JOB_READY;
             }
         }
-        work->unk6++;
+        work->activeSlots++;
         if (job->state == 5) {
             filePrependNode(work, job);
             SignalSema(work->sema);
@@ -124,10 +124,10 @@ s32 func_002C83F0(void *deviceRequest, s32 event, s32 unused, s32 byteCount, Fil
         } else {
             SignalSema(work->sema);
         }
-        saved = D_00437CC0;
-        D_00437CC0 = 1;
+        saved = fileManGuardActive;
+        fileManGuardActive = 1;
         func_002C8AC0();
-        D_00437CC0 = saved;
+        fileManGuardActive = saved;
         break;
     case 7:
         WaitSema(work->sema);

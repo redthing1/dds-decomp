@@ -5,7 +5,7 @@ can grow without weakening the byte-identical retail builds. Each target
 recompiles and replaces selected code, read-only data, and initialized
 small-data sections from five paired code units, and moves one source-owned
 zero-initialized state object. The replacements retain seven declared assembly
-fallback functions in DDS1 and eight in DDS2. The targets also link
+fallback functions in each title. The targets also link
 development-only C code and data into an appended loadable segment:
 
 ```sh
@@ -141,18 +141,19 @@ state move together. The driver retains a source-built `0x10` small-data
 section at its retail address. Current DDS1 recovers the leading callback as
 source; its four guard accesses become ordinary audited `HI16`/`LO16`
 relocations under `-G0`, and the driver grows from `0xEF8` to `0xF10`. The two
-remaining assembly callbacks contain six baked GP-relative accesses. DDS2's
-driver grows to `0xF08` and its three assembly callbacks retain ten accesses.
-The retained-section audit proves those six/ten physical references at the
+remaining assembly callbacks contain six baked GP-relative accesses. DDS2 now
+recovers the same leading callback, grows its driver to `0xF10`, and likewise
+leaves six baked GP-relative accesses in the remaining callbacks. The
+retained-section audit proves those six/six physical references at the
 same fallback-function offsets, exact retained objects, and an unchanged `_gp`
 instead of silently splitting the live state.
 
 Together the replacements move 120 DDS1 and 121 DDS2 exported symbols, plus
-two retained FileManager small-data symbols per title. Seventy-three DDS1 and
-64 DDS2 moved definitions change their relative offsets. The verifier follows
-1,089/1,111 external relocation sites targeting shifted definitions, 75/77
+two retained FileManager small-data symbols per title. Seventy-three moved
+definitions per title change their relative offsets. The verifier follows
+1,089/1,113 external relocation sites targeting shifted definitions, 75/77
 relocations between replacement objects, and 1,461/1,521 total relocation
-targets into moved content. The moved sections retain 549/560 relocation
+targets into moved content. The moved sections retain 549/563 relocation
 entries. All counts are asserted by the version descriptors.
 
 Replacement-owned code and read-only data may change size and contents. A
