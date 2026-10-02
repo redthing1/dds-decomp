@@ -7,8 +7,10 @@ import unittest
 from check_unit import (
     common_symbols,
     owned_bss_size,
+    owned_nobits_size,
     owns_exact_section_item,
     owns_exact_bss,
+    owns_exact_nobits,
     relocate_sdata_item,
     section_symbols,
     source_owned_item_size,
@@ -68,6 +70,24 @@ segments:
         self.assertTrue(owns_exact_bss(self.YAML, "file/fileManager", 0x40))
         self.assertFalse(owns_exact_bss(self.YAML, "file/fileManager", 0x3C))
         self.assertFalse(owns_exact_bss(self.YAML, "file/fileManager", 0x44))
+
+    def test_sbss_uses_the_same_bounded_ownership_contract(self):
+        sbss = self.YAML.replace(".bss", ".sbss", 1).replace(
+            "file/fileManager", "sdf/sdfThread"
+        )
+        self.assertEqual(
+            owned_nobits_size(sbss, "sdf/sdfThread", ".sbss"), 0x40
+        )
+        self.assertTrue(owns_exact_nobits(
+            sbss, "sdf/sdfThread", ".sbss", 0x40
+        ))
+        self.assertFalse(owns_exact_nobits(
+            sbss, "sdf/sdfThread", ".bss", 0x40
+        ))
+
+    def test_rejects_non_nobits_section(self):
+        with self.assertRaisesRegex(ValueError, "unsupported NOBITS section"):
+            owned_nobits_size(self.YAML, "file/fileManager", ".data")
 
     def test_list_form_or_wrong_unit_does_not_claim_bss(self):
         list_form = """\

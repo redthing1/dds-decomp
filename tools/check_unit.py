@@ -66,9 +66,9 @@ def text_section(obj):
 
 # Only units with their own .rodata subsegment (tools/split_rodata.py) may emit
 # rodata, and only jump tables, which are verified entry by entry. Strings and
-# constants still come from INCLUDE_RODATA. A unit may emit BSS only when the
-# YAML gives it an exact, bounded dict-form BSS subsegment; other data remains
-# fail-closed.
+# constants still come from INCLUDE_RODATA. A unit may emit zero-initialized
+# data only when the YAML gives the matching section an exact, bounded
+# dict-form subsegment; other data remains fail-closed.
 DATA_SECTIONS = (".rodata", ".data", ".sdata", ".sbss", ".bss", ".lit4", ".lit8")
 YAML_ITEM = re.compile(
     r"^(?P<indent>[ \t]*)-\s*(?P<body>[^\n#]*?)(?:\s+#.*)?$", re.M
@@ -89,18 +89,20 @@ def _inline_yaml_fields(body):
     return fields
 
 
-def owned_bss_size(yaml_text, unit):
-    """Return an exact dict-form per-unit BSS span, or None.
+def owned_nobits_size(yaml_text, unit, section):
+    """Return an exact dict-form per-unit NOBITS span, or None.
 
     NOBITS subsegments share a file offset, so their retail size comes from
     consecutive VRAM boundaries.  Accept only an unambiguous inline mapping
     whose immediate sibling is another inline mapping with a greater VRAM.
     """
+    if section not in (".sbss", ".bss"):
+        raise ValueError(f"unsupported NOBITS section {section!r}")
     items = list(YAML_ITEM.finditer(yaml_text))
     matches = []
     for index, item in enumerate(items):
         fields = _inline_yaml_fields(item.group("body"))
-        if fields is None or fields.get("type") != ".bss" \
+        if fields is None or fields.get("type") != section \
                 or fields.get("name") != unit:
             continue
         try:
@@ -128,8 +130,18 @@ def owned_bss_size(yaml_text, unit):
     return matches[0] if len(matches) == 1 else None
 
 
+def owned_bss_size(yaml_text, unit):
+    """Compatibility wrapper for an exact source-owned .bss span."""
+    return owned_nobits_size(yaml_text, unit, ".bss")
+
+
 def owns_exact_bss(yaml_text, unit, size):
     expected = owned_bss_size(yaml_text, unit)
+    return expected is not None and size == expected
+
+
+def owns_exact_nobits(yaml_text, unit, section, size):
+    expected = owned_nobits_size(yaml_text, unit, section)
     return expected is not None and size == expected
 
 
@@ -727,10 +739,14 @@ def main():
         del emitted[".sdata"]
     if emitted.get(".lit4") and owns_rodata(version, unit_name, "lit4"):
         del emitted[".lit4"]  # every constant was compared with retail above
-    owned_bss = owned_bss_size(yaml_text, unit_name)
-    if emitted.get(".bss") and owns_exact_bss(
-            yaml_text, unit_name, emitted[".bss"]):
-        del emitted[".bss"]
+    owned_nobits = {
+        section: owned_nobits_size(yaml_text, unit_name, section)
+        for section in (".sbss", ".bss")
+    }
+    for section, expected in owned_nobits.items():
+        if emitted.get(section) and owns_exact_nobits(
+                yaml_text, unit_name, section, emitted[section]):
+            del emitted[section]
     # --func compares one function: the rest of the unit's data is not its business.
     if not args.func:
         for name, size in common:
@@ -741,8 +757,8 @@ def main():
         bad += 1
         if name == ".rodata" and owns_rodata(version, unit_name):
             why = "rodata no instruction refers to (unused static data?)"
-        elif name == ".bss" and owned_bss is not None:
-            why = f"the unit's retail .bss span is 0x{owned_bss:X} bytes"
+        elif name in owned_nobits and owned_nobits[name] is not None:
+            why = f"the unit's retail {name} span is 0x{owned_nobits[name]:X} bytes"
         else:
             why = ("reference the existing D_ symbol instead or keep the function as INCLUDE_ASM "
                    "(this data is not split per unit yet)")
