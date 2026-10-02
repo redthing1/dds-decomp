@@ -32,7 +32,11 @@ The scanner uses only source declarations and real definitions. It ignores
 assuming zero parameters, and skips K&R or unsupported declarators. Uncertain
 typedef identity is listed as skipped evidence instead of a proven mismatch. A
 reported pointer/integer mismatch is representation-sensitive evidence for
-review, not an automatic claim that the generated ABI differs. JSON output is
+review, not an automatic claim that the generated ABI differs. A matching C
+definition is a comparison anchor, not automatically the original interface:
+old-C wrappers can preserve a return register under several source return
+types. Confirm a finding against callers and the callee's machine-level data
+flow before changing a declaration. JSON output is
 sorted for stable review. A whole-tree run is a broad review inventory; start
 with the unit or callee involved in a near-match rather than treating every
 historical declaration difference as cleanup work. Focused tests run with
