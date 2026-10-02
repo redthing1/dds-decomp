@@ -110,6 +110,7 @@ class GltfBuilder:
                 "bufferView": view_index,
                 "mimeType": "image/png",
                 "extras": {
+                    "ddsTextureIndex": texture.index,
                     "ddsPixelStorageMode": tmx.PSM_NAMES[texture.psm],
                     "ddsMipmapCount": texture.mipmap_count,
                     "ddsClutStorageMode": texture.clut_psm,

@@ -116,7 +116,12 @@ def records(
     ):
         raise GltfImportError(f"{context} has no valid buffer view")
     view = views[view_index]
-    if view.get("buffer", 0) != 0:
+    buffer_index = view.get("buffer", 0)
+    if (
+        not isinstance(buffer_index, int)
+        or isinstance(buffer_index, bool)
+        or buffer_index != 0
+    ):
         raise GltfImportError(f"{context} is not in the embedded buffer")
     code = COMPONENT_FORMATS[component_type]
     width = TYPE_WIDTHS[value_type]
@@ -147,6 +152,48 @@ def records(
         struct.unpack_from("<" + code * width, binary, start + index * stride)
         for index in range(count)
     )
+
+
+def buffer_view_data(
+    document: dict,
+    binary: bytes,
+    view_index: object,
+    context: str,
+) -> bytes:
+    """Read one tightly packed opaque payload from the embedded buffer."""
+
+    views = document.get("bufferViews")
+    if (
+        not isinstance(view_index, int)
+        or isinstance(view_index, bool)
+        or not isinstance(views, list)
+        or not 0 <= view_index < len(views)
+        or not isinstance(views[view_index], dict)
+    ):
+        raise GltfImportError(f"{context} has no valid buffer view")
+    view = views[view_index]
+    buffer_index = view.get("buffer", 0)
+    if (
+        not isinstance(buffer_index, int)
+        or isinstance(buffer_index, bool)
+        or buffer_index != 0
+    ):
+        raise GltfImportError(f"{context} is not in the embedded buffer")
+    if "byteStride" in view:
+        raise GltfImportError(f"{context} buffer view is strided")
+    start = view.get("byteOffset", 0)
+    size = view.get("byteLength")
+    if (
+        not isinstance(start, int)
+        or isinstance(start, bool)
+        or not isinstance(size, int)
+        or isinstance(size, bool)
+        or start < 0
+        or size < 0
+        or start + size > len(binary)
+    ):
+        raise GltfImportError(f"{context} buffer view exceeds the GLB")
+    return binary[start : start + size]
 
 
 def f32(value: float) -> float:

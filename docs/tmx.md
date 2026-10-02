@@ -107,6 +107,22 @@ Writing an output whose name ends in `.tbnasm` produces canonical source;
 other output names produce an assembled TBN. Importing an unmodified PNG from
 `extract` recreates every supported native pixel profile byte-for-byte.
 
+An edited model or composed-scene GLB can return all of its embedded PNGs to
+the exact bundle in one pass:
+
+```sh
+python3 tools/tmx_gltf_import.py edited-field.glb \
+  src/dds1/data/field/f011_001.tbnasm edited-f011_001.tbnasm
+```
+
+Only textures referenced by the exported models appear in the GLB; all other
+bundle entries stay byte-exact. Each embedded image retains its native texture
+index, pixel mode, CLUT mode, mip count, and flags as identity metadata. The
+importer requires that identity and the exported image set to remain intact,
+then applies the same lossless profile checks as single-PNG import. This lets a
+scene editor change several textures without extracting or addressing them
+separately.
+
 ## Model export
 
 `tools/fld_model.py` accepts an LB archive directly, or a loose F1/F1 source
