@@ -143,9 +143,9 @@ vertex 200.0 -10.000031471252441 -800.0 1.0
 vertex 700.0 -10.000075340270996 -800.0 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,13 vertices=2,1,0,3 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,13 vertices=6,5,4,7 encounter_type=0 encounter=0 special=0,0
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,13 vertices=2,9,8,1 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=13 vertices=2,1,0,3 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=13 vertices=6,5,4,7 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=13 vertices=2,9,8,1 encounter_type=0 encounter=0 special=0,0
 
 zeros 4
 label r_01map_01_stop

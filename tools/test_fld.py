@@ -93,6 +93,32 @@ end_data
         with self.assertRaisesRegex(fld.FldError, "without attribute"):
             self._encounter_field(attributes=0)
 
+    def test_automap_face_has_semantic_source_and_tag_invariant(self) -> None:
+        source = """\
+fld2 1
+header version=23 magic=FLD2 type_count=1 type_table=@resource_types word_1c=0 word_20=0 word_24=0 word_28=0 word_2c=0 word_30=0 word_34=0 word_38=0 word_3c=0
+label resource_types
+type id=3 count=1 resources=@resources
+label resources
+resource serial=0 flags=0 type=3 name=null reserved=0 transform=null area=null link=null sblock=null data=@collision_data
+label collision_data
+collision vertex_count=3 face_count=1 extra_count=0 vertices=@vertices faces=@faces stop=null reserved=0,0
+label vertices
+vertex 0 0 0 1
+vertex 1 0 0 1
+vertex 0 0 1 1
+label faces
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=3 automap_upper_name=2 vertices=0,1,2,4294967295 encounter_type=0 encounter=0 special=0,0
+label data_end
+end_data
+"""
+        data = fld.encode(fld.parse_source(source))
+        rendered = fld.render_source(data)
+        self.assertIn("automap_block=3 automap_upper_name=2", rendered)
+        self.assertNotIn("automap=", rendered)
+        with self.assertRaisesRegex(fld.FldError, "without attribute"):
+            fld.encode(fld.parse_source(source.replace("0x00000800", "0x00000000")))
+
     def test_field_world_links_default_and_override_zones(self) -> None:
         profile = battle_tbl.ENCOUNT_PROFILES["dds1"]
         table = battle_tbl.default_encount(profile)

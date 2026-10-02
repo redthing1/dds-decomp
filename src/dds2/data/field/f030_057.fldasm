@@ -147,7 +147,7 @@ vertex 823.1376342773438 -9.999720573425293 -1120.9932861328125 1.0
 vertex -1601.7333984375 -9.99975299835205 279.0069274902344 1.0
 
 label r_01map_01_faces
-face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap=1,8 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
+face attributes=0x00000800 move_floor=0 sound=0 stop=0 place=0 automap_block=1 automap_upper_name=8 vertices=0,1,3,2 encounter_type=0 encounter=0 special=0,0
 
 zeros 12
 label r_01map_01_stop
