@@ -325,6 +325,7 @@ explicitly when the automap contains several maps:
 ```sh
 python3 tools/fld_scene.py extracted/f024_003.LB field-world.glb \
   --automap src/dds1/data/field/f024.ambasm --automap-area 003 \
+  --warps src/dds1/data/field/f024.wapasm \
   --meters-per-unit 0.01 --frames-per-second 30
 ```
 
@@ -349,6 +350,22 @@ floors, and icon markers to that coordinate space. Area selection is explicit:
 the numeric FLD2 discovery selector is not assumed to identify an AMB
 sub-block, and the exporter does not invent a cross-resource link that the
 runtime and retail data do not guarantee.
+
+`--warps` adds the area's WAP transition graph to its placement nodes. Field,
+elevator, facility, and event destinations retain both their typed values and
+the original three argument words; destination position and camera identities,
+conditional flag gates, DDS-tail actions, and nondefault post-transition state
+remain attached to each row. A placement can own several conditional rows, so
+`ddsTransitions` is always a list. Rows whose named actor is absent from that
+FLD2 remain visible
+in `ddsUnlinkedTransitionActors` on the field wrapper instead of being dropped.
+Tracked `.wapasm` inputs automatically use their paired INF and field-script
+sources to resolve exact symbols.
+
+Across field areas present in the tracked FLD2 corpus, 2,731 of 2,780 named WAP
+rows resolve to placement nodes: 1,552 of 1,582 in DDS1 and 1,179 of 1,198 in
+DDS2. Sixty DDS1 and 43 DDS2 placement identities own more than one row;
+the exporter preserves every alternative and its gate.
 
 The scene layer validates all 1,232 supported FLD2 payload occurrences across
 both games: 5,533 collision resources and 167,623 output triangles, 1,551
