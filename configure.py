@@ -776,7 +776,7 @@ def write_ninja(versions: list[str], args: argparse.Namespace) -> dict[str, list
                     str(output),
                     "amb",
                     str(source),
-                    implicit=["tools/amb.py", "tools/reloc.py"],
+                    implicit=["tools/amb.py", "tools/fld.py", "tools/reloc.py"],
                     variables={"outdir": str(output.parent)},
                 )
                 amb_outputs.append(str(output))
