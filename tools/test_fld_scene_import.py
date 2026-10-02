@@ -14,7 +14,7 @@ import fld  # noqa: E402
 import fld_model  # noqa: E402
 import fld_scene  # noqa: E402
 import fld_scene_import  # noqa: E402
-from test_fld_scene import SOURCE  # noqa: E402
+from test_fld_scene import MOTION_SOURCE, SOURCE  # noqa: E402
 
 
 class FieldSceneImportTests(unittest.TestCase):
@@ -37,9 +37,12 @@ class FieldSceneImportTests(unittest.TestCase):
         node = next(node for node in self.document["nodes"] if node["name"] == "01all")
         return self.document["meshes"][node["mesh"]]["primitives"][0]
 
-    def accessor_offset(self, accessor_index: int) -> int:
-        accessor = self.document["accessors"][accessor_index]
-        view = self.document["bufferViews"][accessor["bufferView"]]
+    def accessor_offset(
+        self, accessor_index: int, document: dict | None = None
+    ) -> int:
+        document = self.document if document is None else document
+        accessor = document["accessors"][accessor_index]
+        view = document["bufferViews"][accessor["bufferView"]]
         return view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
 
     def test_unchanged_glb_preserves_every_field_byte(self) -> None:
@@ -120,6 +123,132 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(
             fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
         )
+
+    def test_imports_path_translation_rotation_and_scalar_tracks(self) -> None:
+        source = fld.encode(fld.parse_source(MOTION_SOURCE))
+        builder = fld_model.GltfBuilder.create()
+        document, binary = fld_scene.append_field_scene(
+            builder.document,
+            bytes(builder.binary),
+            source,
+            meters_per_unit=0.01,
+            frames_per_second=30.0,
+        )
+        document["asset"]["extras"] = {
+            "ddsMetersPerUnit": 0.01,
+            "ddsNativeAxesPreserved": True,
+            "ddsFramesPerSecond": 30.0,
+        }
+        binary = bytearray(binary)
+        animation = next(
+            item
+            for item in document["animations"]
+            if item["name"] == "01cam_01_MOTION/motion"
+        )
+        translation = animation["samplers"][0]["output"]
+        struct.pack_into(
+            "<f", binary, self.accessor_offset(translation, document), 2.5
+        )
+        rotation = animation["samplers"][1]["output"]
+        struct.pack_into(
+            "<4f",
+            binary,
+            self.accessor_offset(rotation, document) + 16,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+        )
+        motion_node = next(
+            node
+            for node in document["nodes"]
+            if node.get("name") == "01cam_01_MOTION"
+        )
+        motion_node["extras"]["ddsMotionTracks"][2]["values"][1][0] = 60.0
+        motion_node["extras"]["ddsMotionTracks"][3]["values"][0][9] = 99.0
+
+        rebuilt, summary = fld_scene_import.import_scene(
+            source, document, bytes(binary)
+        )
+
+        self.assertEqual(
+            summary,
+            fld_scene_import.ImportSummary(1, 1, 0, 0, 0, 0, 0, 0, 1, 4, 4),
+        )
+        words, data_end, _ = fld._read_header(rebuilt)
+        resource = fld._read_resources(
+            rebuilt, fld._read_types(rebuilt, words, data_end)
+        )[0]
+        tracks = fld._read_motion_tracks(rebuilt, resource.data, data_end, "motion")
+        self.assertEqual(
+            struct.unpack_from("<3f", rebuilt, tracks[0].values),
+            (250.0, 200.0, 300.0),
+        )
+        self.assertEqual(
+            struct.unpack_from("<4f", rebuilt, tracks[1].values + 16),
+            (0.0, 1.0, 0.0, 0.0),
+        )
+        self.assertEqual(
+            struct.unpack_from("<f", rebuilt, tracks[2].values + 4)[0],
+            60.0,
+        )
+        self.assertEqual(
+            struct.unpack_from("<f", rebuilt, tracks[3].values + 36)[0],
+            99.0,
+        )
+        self.assertEqual(
+            fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
+        )
+
+    def test_path_motion_locks_frame_keys_and_track_identity(self) -> None:
+        source = fld.encode(fld.parse_source(MOTION_SOURCE))
+        builder = fld_model.GltfBuilder.create()
+        document, binary = fld_scene.append_field_scene(
+            builder.document,
+            bytes(builder.binary),
+            source,
+            meters_per_unit=0.01,
+            frames_per_second=30.0,
+        )
+        document["asset"]["extras"] = {
+            "ddsMetersPerUnit": 0.01,
+            "ddsNativeAxesPreserved": True,
+            "ddsFramesPerSecond": 30.0,
+        }
+        binary = bytearray(binary)
+        animation = next(
+            item
+            for item in document["animations"]
+            if item["name"] == "01cam_01_MOTION/motion"
+        )
+        time_accessor = animation["samplers"][0]["input"]
+        struct.pack_into(
+            "<f",
+            binary,
+            self.accessor_offset(time_accessor, document) + 4,
+            2.0,
+        )
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "changes its frame keys"
+        ):
+            fld_scene_import.import_scene(source, document, bytes(binary))
+
+        struct.pack_into(
+            "<f",
+            binary,
+            self.accessor_offset(time_accessor, document) + 4,
+            1.0,
+        )
+        motion_node = next(
+            node
+            for node in document["nodes"]
+            if node.get("name") == "01cam_01_MOTION"
+        )
+        motion_node["extras"]["ddsMotionTracks"][0]["kindId"] = 4
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "metadata differs"
+        ):
+            fld_scene_import.import_scene(source, document, bytes(binary))
 
     def test_rejects_collision_topology_and_metadata_changes(self) -> None:
         primitive = self.collision_primitive()
@@ -215,11 +344,13 @@ end_data
                     bytes(builder.binary),
                     data,
                     meters_per_unit=0.01,
+                    frames_per_second=30.0,
                     placement_marker_size=0.0,
                 )
                 document["asset"]["extras"] = {
                     "ddsMetersPerUnit": 0.01,
                     "ddsNativeAxesPreserved": True,
+                    "ddsFramesPerSecond": 30.0,
                 }
                 rebuilt, _ = fld_scene_import.import_scene(data, document, binary)
                 self.assertEqual(rebuilt, data, path.name)

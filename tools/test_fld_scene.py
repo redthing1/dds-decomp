@@ -62,6 +62,50 @@ end_data
 """
 
 
+MOTION_SOURCE = """\
+fld2 1
+header version=23 magic=FLD2 type_count=1 type_table=@types word_1c=0 word_20=0 word_24=0 word_28=0 word_2c=0 word_30=0 word_34=0 word_38=0 word_3c=0
+label types
+type id=9 count=1 resources=@motion_resources
+label motion_resources
+resource serial=7 flags=2 type=9 name=@motion_name reserved=0 transform=null area=null link=null sblock=null data=@motion_data
+label motion_name
+string16 01cam_01_MOTION
+label motion_data
+motion tracks=vector3:@vector_curve,quaternion:@rotation_curve,scalar:@scalar_curve,light:@light_curve
+label vector_curve
+motion_curve count=2 values=@vector_values keys=@vector_keys word_0c=1
+label vector_values
+vector3 100 200 300
+vector3 400 500 600
+label vector_keys
+keys 0 30
+label rotation_curve
+motion_curve count=2 values=@rotation_values keys=@rotation_keys word_0c=0
+label rotation_values
+quaternion 0 0 0 1
+quaternion 0 0 0.70710677 0.70710677
+label rotation_keys
+keys 0 30
+label scalar_curve
+motion_curve count=2 values=@scalar_values keys=@scalar_keys word_0c=1
+label scalar_values
+scalar 45
+scalar 55
+label scalar_keys
+keys 0 30
+label light_curve
+motion_curve count=2 values=@light_values keys=@light_keys word_0c=0
+label light_values
+motion_light 1 2 3 4 5 6 7 8 9 10
+motion_light 11 12 13 14 15 16 17 18 19 20
+label light_keys
+keys 0 30
+label data_end
+end_data
+"""
+
+
 class FldSceneTests(unittest.TestCase):
     def test_appends_collision_camera_and_placement(self) -> None:
         builder = fld_model.GltfBuilder.create()
@@ -79,6 +123,7 @@ class FldSceneTests(unittest.TestCase):
             {
                 "ddsCollisionResources": 1,
                 "ddsCameraResources": 1,
+                "ddsMotionResources": 0,
                 "ddsPlacementResources": 1,
             },
         )
@@ -111,6 +156,41 @@ class FldSceneTests(unittest.TestCase):
             ],
         )
         self.assertIn("KHR_materials_unlit", document["extensionsUsed"])
+        fld_model.encode_glb(document, binary)
+
+    def test_exports_path_motion_as_animation_and_typed_metadata(self) -> None:
+        builder = fld_model.GltfBuilder.create()
+        document, binary = fld_scene.append_field_scene(
+            builder.document,
+            bytes(builder.binary),
+            fld.encode(fld.parse_source(MOTION_SOURCE)),
+            meters_per_unit=0.01,
+            frames_per_second=30.0,
+        )
+
+        node = next(
+            node
+            for node in document["nodes"]
+            if node.get("name") == "01cam_01_MOTION"
+        )
+        tracks = node["extras"]["ddsMotionTracks"]
+        self.assertEqual(
+            [track["representation"] for track in tracks],
+            ["translation", "rotation", "extras", "extras"],
+        )
+        self.assertEqual(tracks[2]["values"], [[45.0], [55.0]])
+        self.assertEqual(tracks[3]["values"][1][-1], 20.0)
+        animation = next(
+            animation
+            for animation in document["animations"]
+            if animation["name"] == "01cam_01_MOTION/motion"
+        )
+        self.assertEqual(
+            [channel["target"]["path"] for channel in animation["channels"]],
+            ["translation", "rotation"],
+        )
+        self.assertEqual(animation["extras"]["ddsTrackIndices"], [0, 1])
+        self.assertEqual(document["nodes"][-1]["extras"]["ddsMotionResources"], 1)
         fld_model.encode_glb(document, binary)
 
     def test_rejects_negative_marker_size(self) -> None:

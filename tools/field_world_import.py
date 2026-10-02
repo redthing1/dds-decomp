@@ -239,6 +239,7 @@ def _print_summary(result: WorldImportResult) -> None:
         f"{result.model_summary.changed_tracks} animation tracks",
         f"{result.field_summary.changed_resources} field resources",
         f"{result.field_summary.changed_collision_meshes} collision meshes",
+        f"{result.field_summary.changed_motion_tracks} field motion tracks",
     ]
     if result.texture_summary is not None:
         parts.append(f"{result.texture_summary.changed_images} textures")

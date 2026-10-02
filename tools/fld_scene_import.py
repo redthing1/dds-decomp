@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import edited FLD2 transforms and collision vertices from a composed GLB."""
+"""Import edited FLD2 transforms, collision, and motion from a composed GLB."""
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ from gltf_import import (
 )
 
 
-SUPPORTED_TYPES = frozenset({3, 4, 10})
+SUPPORTED_TYPES = frozenset({3, 4, 9, 10})
+TRANSFORM_TYPES = frozenset({3, 4, 10})
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,9 @@ class ImportSummary:
     collision_meshes: int
     changed_collision_meshes: int
     collision_vertices: int
+    motion_resources: int = 0
+    motion_tracks: int = 0
+    changed_motion_tracks: int = 0
 
 
 def _resource_name(data: bytes, resource: fld.Resource) -> str:
@@ -247,6 +251,268 @@ def _import_collision(
     return 1, int(bool(changed_vertices)), changed_vertices
 
 
+def _motion_values(
+    data: bytes,
+    track: fld.MotionTrack,
+) -> tuple[tuple[float, ...], ...]:
+    width = fld.MOTION_KINDS[track.kind][1]
+    return tuple(
+        struct.unpack_from(
+            "<" + "f" * width,
+            data,
+            track.values + index * width * 4,
+        )
+        for index in range(track.count)
+    )
+
+
+def _same_rotation(
+    actual: tuple[float | int, ...],
+    expected: tuple[float, ...],
+) -> bool:
+    return all(
+        left == right for left, right in zip(actual, expected, strict=True)
+    ) or all(left == -right for left, right in zip(actual, expected, strict=True))
+
+
+def _metadata_values(
+    value: object,
+    count: int,
+    width: int,
+    context: str,
+) -> tuple[tuple[float, ...], ...]:
+    if not isinstance(value, list) or len(value) != count:
+        raise FieldSceneImportError(f"{context} changes its key count")
+    result = []
+    for row in value:
+        if (
+            not isinstance(row, list)
+            or len(row) != width
+            or any(
+                not isinstance(item, (int, float))
+                or isinstance(item, bool)
+                or not math.isfinite(item)
+                for item in row
+            )
+        ):
+            raise FieldSceneImportError(f"{context} has invalid values")
+        result.append(tuple(float(item) for item in row))
+    return tuple(result)
+
+
+def _write_motion_values(
+    output: bytearray,
+    offset: int,
+    values: tuple[float, ...],
+    context: str,
+) -> None:
+    try:
+        struct.pack_into("<" + "f" * len(values), output, offset, *values)
+    except (OverflowError, struct.error) as exc:
+        raise FieldSceneImportError(
+            f"{context} cannot be represented as FLD2 float32 values"
+        ) from exc
+
+
+def _import_motion(
+    field_data: bytes,
+    output: bytearray,
+    data_end: int,
+    resource: fld.Resource,
+    node: dict,
+    node_index: int,
+    document: dict,
+    binary: bytes,
+    meters_per_unit: float,
+    frames_per_second: float | None,
+) -> tuple[int, int]:
+    name = _resource_name(field_data, resource)
+    tracks = (
+        fld._read_motion_tracks(
+            field_data, resource.data, data_end, f"motion {name}"
+        )
+        if resource.data
+        else ()
+    )
+    extras = node.get("extras")
+    summaries = extras.get("ddsMotionTracks") if isinstance(extras, dict) else None
+    if not isinstance(summaries, list) or len(summaries) != len(tracks):
+        raise FieldSceneImportError(f"motion {name!r} changes its track layout")
+
+    represented_paths: set[str] = set()
+    represented = []
+    changed = 0
+    for track_index, (track, summary) in enumerate(
+        zip(tracks, summaries, strict=True)
+    ):
+        context = f"motion {name!r} track {track_index}"
+        kind_name, width = fld.MOTION_KINDS[track.kind]
+        frames = struct.unpack_from(f"<{track.count}I", field_data, track.keys)
+        path = {0: "translation", 2: "rotation"}.get(track.kind)
+        representation = (
+            path if path is not None and path not in represented_paths else "extras"
+        )
+        expected = {
+            "index": track_index,
+            "kindId": track.kind,
+            "kind": kind_name,
+            "keyFrames": list(frames),
+            "word0C": track.word_0c,
+            "interpolation": "normalizedLinear" if track.kind == 2 else "linear",
+            "representation": representation,
+        }
+        if not isinstance(summary, dict) or any(
+            summary.get(key) != value for key, value in expected.items()
+        ):
+            raise FieldSceneImportError(f"{context} metadata differs")
+        allowed = set(expected)
+        source_values = _motion_values(field_data, track)
+        if representation == "extras":
+            allowed.add("values")
+            actual_values = _metadata_values(
+                summary.get("values"), track.count, width, context
+            )
+            track_changed = False
+            for key_index, (actual, native) in enumerate(
+                zip(actual_values, source_values, strict=True)
+            ):
+                exported = tuple(f32(value) for value in native)
+                if actual == exported:
+                    continue
+                _write_motion_values(
+                    output,
+                    track.values + key_index * width * 4,
+                    actual,
+                    context,
+                )
+                track_changed = True
+            changed += track_changed
+        else:
+            represented_paths.add(representation)
+            represented.append(
+                (track_index, track, representation, source_values)
+            )
+        if set(summary) != allowed:
+            raise FieldSceneImportError(f"{context} has invalid metadata fields")
+
+    animations = document.get("animations", [])
+    if not isinstance(animations, list):
+        raise FieldSceneImportError("GLB has an invalid animation array")
+    matches = [
+        animation
+        for animation in animations
+        if isinstance(animation, dict)
+        and animation.get("name") == f"{name}/motion"
+    ]
+    if len(matches) != int(bool(represented)):
+        raise FieldSceneImportError(
+            f"motion {name!r} has {len(matches)} GLB animations, "
+            f"expected {int(bool(represented))}"
+        )
+    if not represented:
+        return len(tracks), changed
+    if frames_per_second is None:
+        raise FieldSceneImportError("GLB has no positive finite DDS frame rate")
+
+    animation = matches[0]
+    expected_animation_extras = {
+        "ddsResourceType": 9,
+        "ddsResourceSerial": resource.serial,
+        "ddsTrackIndices": [item[0] for item in represented],
+    }
+    if animation.get("extras") != expected_animation_extras:
+        raise FieldSceneImportError(f"motion {name!r} animation metadata differs")
+    samplers = animation.get("samplers")
+    channels = animation.get("channels")
+    if (
+        not isinstance(samplers, list)
+        or not isinstance(channels, list)
+        or len(samplers) != len(represented)
+        or len(channels) != len(represented)
+    ):
+        raise FieldSceneImportError(f"motion {name!r} changes its channel layout")
+
+    for channel_index, (track_index, track, path, source_values) in enumerate(
+        represented
+    ):
+        context = f"motion {name!r} track {track_index}"
+        channel = channels[channel_index]
+        sampler = samplers[channel_index]
+        if not isinstance(channel, dict) or channel != {
+            "sampler": channel_index,
+            "target": {"node": node_index, "path": path},
+        }:
+            raise FieldSceneImportError(f"{context} changes its target")
+        if (
+            not isinstance(sampler, dict)
+            or sampler.get("interpolation", "LINEAR") != "LINEAR"
+        ):
+            raise FieldSceneImportError(f"{context} changes its interpolation")
+        frames = struct.unpack_from(f"<{track.count}I", field_data, track.keys)
+        times = records(
+            document,
+            binary,
+            sampler.get("input"),
+            "SCALAR",
+            {fld_model.FLOAT},
+            context + " times",
+            normalized=False,
+        )
+        expected_times = tuple(
+            (f32(float(frame) / frames_per_second),) for frame in frames
+        )
+        if times != expected_times:
+            raise FieldSceneImportError(f"{context} changes its frame keys")
+        width = 4 if path == "rotation" else 3
+        values = records(
+            document,
+            binary,
+            sampler.get("output"),
+            f"VEC{width}",
+            {fld_model.FLOAT},
+            context + " values",
+            normalized=False,
+        )
+        if len(values) != track.count:
+            raise FieldSceneImportError(f"{context} changes its key count")
+        track_changed = False
+        for key_index, (actual, native) in enumerate(
+            zip(values, source_values, strict=True)
+        ):
+            if not all(
+                isinstance(value, float) and math.isfinite(value)
+                for value in actual
+            ):
+                raise FieldSceneImportError(f"{context} has non-finite values")
+            if path == "translation":
+                exported = tuple(f32(value * meters_per_unit) for value in native)
+                if actual == exported:
+                    continue
+                edited = tuple(value / meters_per_unit for value in actual)
+            else:
+                exported = tuple(
+                    f32(value)
+                    for value in fld_model._normalized_quaternion(native)
+                )
+                if _same_rotation(actual, exported):
+                    continue
+                length = math.sqrt(sum(value * value for value in actual))
+                if not math.isfinite(length) or length == 0.0:
+                    raise FieldSceneImportError(
+                        f"{context} key {key_index} is not a finite quaternion"
+                    )
+                edited = tuple(value / length for value in actual)
+            _write_motion_values(
+                output,
+                track.values + key_index * width * 4,
+                edited,
+                context,
+            )
+            track_changed = True
+        changed += track_changed
+    return len(tracks), changed
+
+
 def import_scene(
     field_data: bytes,
     document: dict,
@@ -272,6 +538,17 @@ def import_scene(
     meters_per_unit = float(meters_per_unit)
     if extras.get("ddsNativeAxesPreserved") is not True:
         raise FieldSceneImportError("GLB does not preserve native DDS axes")
+    frames_per_second = extras.get("ddsFramesPerSecond")
+    if frames_per_second is not None and (
+        not isinstance(frames_per_second, (int, float))
+        or isinstance(frames_per_second, bool)
+        or not math.isfinite(frames_per_second)
+        or frames_per_second <= 0.0
+    ):
+        raise FieldSceneImportError("GLB has an invalid DDS frame rate")
+    frames_per_second = (
+        float(frames_per_second) if frames_per_second is not None else None
+    )
 
     words, data_end, _ = fld._read_header(field_data)
     resources = fld._read_resources(
@@ -286,7 +563,7 @@ def import_scene(
             raise FieldSceneImportError(
                 f"FLD2 has duplicate type {key[0]} serial {key[1]} resources"
             )
-        if not resource.transform:
+        if resource.type_id in TRANSFORM_TYPES and not resource.transform:
             raise FieldSceneImportError(
                 f"FLD2 type {key[0]} serial {key[1]} has no transform"
             )
@@ -301,7 +578,8 @@ def import_scene(
     changed_resources: set[tuple[int, int]] = set()
     translations = rotations = scales = 0
     collision_meshes = changed_collision_meshes = collision_vertices = 0
-    for node in nodes:
+    motion_resources = motion_tracks = changed_motion_tracks = 0
+    for node_index, node in enumerate(nodes):
         if not isinstance(node, dict):
             continue
         node_extras = node.get("extras")
@@ -335,6 +613,26 @@ def import_scene(
             raise FieldSceneImportError(
                 f"GLB type {key[0]} serial {key[1]} changes its resource flags"
             )
+
+        if resource.type_id == 9:
+            tracks, changed_tracks = _import_motion(
+                field_data,
+                output,
+                data_end,
+                resource,
+                node,
+                node_index,
+                document,
+                binary,
+                meters_per_unit,
+                frames_per_second,
+            )
+            motion_resources += 1
+            motion_tracks += tracks
+            changed_motion_tracks += changed_tracks
+            if changed_tracks:
+                changed_resources.add(key)
+            continue
         if "matrix" in node:
             raise FieldSceneImportError(
                 f"node {expected_name!r} uses a matrix; preserve editable TRS fields"
@@ -459,6 +757,9 @@ def import_scene(
         collision_meshes,
         changed_collision_meshes,
         collision_vertices,
+        motion_resources,
+        motion_tracks,
+        changed_motion_tracks,
     )
 
 
@@ -491,7 +792,8 @@ def main() -> None:
         f"collision meshes; changed {summary.changed_resources} resources "
         f"({summary.translations} translations, {summary.rotations} rotations, "
         f"{summary.scales} scales, {summary.changed_collision_meshes} collision "
-        f"meshes, {summary.collision_vertices} collision vertices)"
+        f"meshes, {summary.collision_vertices} collision vertices, "
+        f"{summary.changed_motion_tracks} of {summary.motion_tracks} motion tracks)"
     )
 
 

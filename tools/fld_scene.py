@@ -181,21 +181,143 @@ def _add_collision_mesh(
     return mesh_index
 
 
+def _motion_values(
+    data: bytes,
+    track: fld.MotionTrack,
+) -> tuple[tuple[float, ...], ...]:
+    width = fld.MOTION_KINDS[track.kind][1]
+    return tuple(
+        struct.unpack_from(
+            "<" + "f" * width,
+            data,
+            track.values + index * width * 4,
+        )
+        for index in range(track.count)
+    )
+
+
+def _add_motion_animation(
+    builder: fld_model.GltfBuilder,
+    data: bytes,
+    data_end: int,
+    resource: fld.Resource,
+    name: str,
+    node: dict,
+    node_index: int,
+    meters_per_unit: float,
+    frames_per_second: float,
+) -> None:
+    tracks = (
+        fld._read_motion_tracks(data, resource.data, data_end, f"motion {name}")
+        if resource.data
+        else ()
+    )
+    summaries = []
+    represented_paths: set[str] = set()
+    represented: list[
+        tuple[int, fld.MotionTrack, str, tuple[tuple[float, ...], ...]]
+    ] = []
+    for track_index, track in enumerate(tracks):
+        kind_name, _ = fld.MOTION_KINDS[track.kind]
+        frames = struct.unpack_from(f"<{track.count}I", data, track.keys)
+        values = _motion_values(data, track)
+        if any(not math.isfinite(value) for row in values for value in row):
+            raise fld.FldError(
+                f"motion {name} track {track_index} has non-finite values"
+            )
+        path = {0: "translation", 2: "rotation"}.get(track.kind)
+        representation = (
+            path if path is not None and path not in represented_paths else "extras"
+        )
+        summary = {
+            "index": track_index,
+            "kindId": track.kind,
+            "kind": kind_name,
+            "keyFrames": list(frames),
+            "word0C": track.word_0c,
+            "interpolation": "normalizedLinear" if track.kind == 2 else "linear",
+            "representation": representation,
+        }
+        if representation == "extras":
+            summary["values"] = [list(row) for row in values]
+        else:
+            represented_paths.add(representation)
+            represented.append((track_index, track, representation, values))
+        summaries.append(summary)
+    node["extras"]["ddsMotionTracks"] = summaries
+    if not represented:
+        return
+
+    animation = {
+        "name": f"{name}/motion",
+        "samplers": [],
+        "channels": [],
+        "extras": {
+            "ddsResourceType": 9,
+            "ddsResourceSerial": resource.serial,
+            "ddsTrackIndices": [item[0] for item in represented],
+        },
+    }
+    for _, track, path, values in represented:
+        frames = struct.unpack_from(f"<{track.count}I", data, track.keys)
+        times = tuple(float(frame) / frames_per_second for frame in frames)
+        if path == "translation":
+            converted = tuple(
+                tuple(value * meters_per_unit for value in row) for row in values
+            )
+        else:
+            converted = tuple(
+                tuple(fld_model._normalized_quaternion(row)) for row in values
+            )
+        time_accessor = builder.accessor(
+            struct.pack("<" + "f" * len(times), *times),
+            fld_model.FLOAT,
+            "SCALAR",
+            len(times),
+            minimum=[min(times)],
+            maximum=[max(times)],
+        )
+        output_accessor = builder.accessor(
+            fld_model._pack_floats(converted),
+            fld_model.FLOAT,
+            "VEC4" if path == "rotation" else "VEC3",
+            len(converted),
+        )
+        sampler = len(animation["samplers"])
+        animation["samplers"].append(
+            {
+                "input": time_accessor,
+                "output": output_accessor,
+                "interpolation": "LINEAR",
+            }
+        )
+        animation["channels"].append(
+            {"sampler": sampler, "target": {"node": node_index, "path": path}}
+        )
+    builder.document.setdefault("animations", []).append(animation)
+
+
 def append_field_scene(
     document: dict,
     binary: bytes,
     field_data: bytes,
     *,
     meters_per_unit: float,
+    frames_per_second: float = 1.0,
     placement_marker_size: float = 50.0,
+    motion_marker_size: float = 25.0,
     transitions: dict[str, tuple[dict, ...]] | None = None,
 ) -> tuple[dict, bytes]:
-    """Append FLD2 collision, cameras, and placements to a glTF document."""
+    """Append FLD2 collision, cameras, motion, and placements to a glTF document."""
 
     if not math.isfinite(meters_per_unit) or meters_per_unit <= 0.0:
         raise fld.FldError("meters per unit must be a positive finite number")
+    if not math.isfinite(frames_per_second) or frames_per_second <= 0.0:
+        raise fld.FldError("frames per second must be a positive finite number")
     if not math.isfinite(placement_marker_size) or placement_marker_size < 0.0:
         raise fld.FldError("placement marker size must be finite and nonnegative")
+    if not math.isfinite(motion_marker_size) or motion_marker_size < 0.0:
+        raise fld.FldError("motion marker size must be finite and nonnegative")
     fld.validate(field_data)
     words, data_end, _ = fld._read_header(field_data)
     if field_data[4:8] != b"FLD2":
@@ -208,11 +330,13 @@ def append_field_scene(
     collision_material = None
     marker_material = None
     marker_mesh = None
-    counts = {"collision": 0, "camera": 0, "placement": 0}
+    motion_material = None
+    motion_mesh = None
+    counts = {"collision": 0, "camera": 0, "motion": 0, "placement": 0}
     transition_actors: set[str] = set()
 
     for resource in resources:
-        if resource.type_id not in {3, 4, 10}:
+        if resource.type_id not in {3, 4, 9, 10}:
             continue
         name = _resource_name(field_data, resource)
         node = {
@@ -245,6 +369,20 @@ def append_field_scene(
                 "<f", field_data, resource.data
             )[0]
             counts["camera"] += 1
+        elif resource.type_id == 9:
+            if motion_marker_size > 0.0:
+                if motion_material is None:
+                    motion_material = _unlit_material(
+                        document, "FLD2 motion", [1.0, 0.7, 0.05, 1.0]
+                    )
+                    motion_mesh = fld_model.add_marker_mesh(
+                        builder,
+                        "FLD2 motion marker",
+                        motion_material,
+                        motion_marker_size * meters_per_unit,
+                    )
+                node["mesh"] = motion_mesh
+            counts["motion"] += 1
         elif resource.type_id == 10 and resource.data:
             kind, event_index, visible, payload = struct.unpack_from(
                 "<IiII", field_data, resource.data
@@ -284,6 +422,18 @@ def append_field_scene(
         node_index = len(document["nodes"])
         document["nodes"].append(node)
         scene_children.append(node_index)
+        if resource.type_id == 9:
+            _add_motion_animation(
+                builder,
+                field_data,
+                data_end,
+                resource,
+                name,
+                node,
+                node_index,
+                meters_per_unit,
+                frames_per_second,
+            )
 
     wrapper_index = len(document["nodes"])
     wrapper = {
@@ -291,6 +441,7 @@ def append_field_scene(
         "extras": {
             "ddsCollisionResources": counts["collision"],
             "ddsCameraResources": counts["camera"],
+            "ddsMotionResources": counts["motion"],
             "ddsPlacementResources": counts["placement"],
         },
     }
@@ -330,6 +481,7 @@ def build_scene(
     meters_per_unit: float = 1.0,
     frames_per_second: float = 1.0,
     placement_marker_size: float = 50.0,
+    motion_marker_size: float = 25.0,
     automap_data: bytes | None = None,
     automap_areas: set[str] | None = None,
     icon_marker_size: float = 50.0,
@@ -356,7 +508,9 @@ def build_scene(
         binary,
         field_data,
         meters_per_unit=meters_per_unit,
+        frames_per_second=frames_per_second,
         placement_marker_size=placement_marker_size,
+        motion_marker_size=motion_marker_size,
         transitions=transitions,
     )
     if automap_data is not None:
@@ -425,6 +579,7 @@ def main() -> None:
     parser.add_argument("--meters-per-unit", type=float, default=1.0)
     parser.add_argument("--frames-per-second", type=float, default=1.0)
     parser.add_argument("--placement-marker-size", type=float, default=50.0)
+    parser.add_argument("--motion-marker-size", type=float, default=25.0)
     parser.add_argument("--automap", type=Path, help="AMB binary or source to add")
     parser.add_argument(
         "--automap-area",
@@ -481,6 +636,7 @@ def main() -> None:
             meters_per_unit=args.meters_per_unit,
             frames_per_second=args.frames_per_second,
             placement_marker_size=args.placement_marker_size,
+            motion_marker_size=args.motion_marker_size,
             automap_data=(
                 _automap_source_or_binary(args.automap)
                 if args.automap is not None

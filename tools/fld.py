@@ -156,6 +156,10 @@ MOTION_KINDS = {
     5: ("light", 10),
 }
 MOTION_KIND_IDS = {name: kind for kind, (name, _) in MOTION_KINDS.items()}
+MOTION_VALUE_KIND_IDS = {
+    **{name: kind for name, kind in MOTION_KIND_IDS.items() if name != "light"},
+    "motion_light": MOTION_KIND_IDS["light"],
+}
 SPECIAL_POINT_KINDS = {1: "save", 2: "heal", 3: "hunt"}
 SPECIAL_POINT_KIND_IDS = {name: kind for kind, name in SPECIAL_POINT_KINDS.items()}
 
@@ -1944,8 +1948,10 @@ def render_source(data: bytes) -> str:
                         data,
                         track.values + value_index * width * 4,
                     )
+                    directive = "motion_light" if kind_name == "light" else kind_name
                     value_lines.append(
-                        f"{kind_name} " + " ".join(_float_text(value) for value in values)
+                        f"{directive} "
+                        + " ".join(_float_text(value) for value in values)
                     )
                 add_span(
                     track.values,
@@ -2543,8 +2549,8 @@ def _operation_size(operation: Operation, offset: int) -> int:
         if not tracks:
             raise FldError(f"line {operation.line}: motion requires at least one track")
         return (4 + len(tracks) * 8 + 0xF) & ~0xF
-    if name in MOTION_KIND_IDS:
-        width = MOTION_KINDS[MOTION_KIND_IDS[name]][1]
+    if name in MOTION_VALUE_KIND_IDS:
+        width = MOTION_KINDS[MOTION_VALUE_KIND_IDS[name]][1]
         if len(args) != width:
             raise FldError(f"line {operation.line}: {name} expects {width} floats")
         return width * 4
@@ -3176,8 +3182,8 @@ def encode(operations: tuple[Operation, ...]) -> bytes:
             if len(args) != 1:
                 raise FldError(f"line {operation.line}: pointer expects one label")
             output.extend(pointer(args[0]))
-        elif name in MOTION_KIND_IDS:
-            width = MOTION_KINDS[MOTION_KIND_IDS[name]][1]
+        elif name in MOTION_VALUE_KIND_IDS:
+            width = MOTION_KINDS[MOTION_VALUE_KIND_IDS[name]][1]
             if len(args) != width:
                 raise FldError(
                     f"line {operation.line}: {name} expects {width} floats"

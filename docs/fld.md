@@ -400,6 +400,17 @@ terminals, and other script-facing positions are visible in ordinary glTF
 viewers; `--placement-marker-size` sets its radius in native DDS units, or zero
 hides the geometry while retaining the nodes and metadata.
 
+Type-9 camera and path motion resources become glTF animations on separate
+motion nodes. Vector tracks drive translation and quaternion tracks drive
+rotation, using the requested unit scale and frame rate. A shared amber marker
+makes the motion visible in ordinary viewers; `--motion-marker-size` controls
+its radius or hides it at zero. Scalar and light tracks have no matching core
+glTF node property, so their typed key values remain in `ddsMotionTracks`
+metadata rather than being assigned a false visual meaning. Quaternion metadata
+also retains the native normalized-linear interpolation identity while glTF
+viewers use their standard rotation interpolation. Across both tracked games
+this represents 872 motion resources, 1,124 tracks, and 42,725 keys.
+
 Collision quads are triangulated as `(0,1,2)` and `(0,2,3)`; the retail
 `0xffffffff` fourth-index sentinel selects a single triangle. Source face
 controls remain authoritative in the FLD2 source, while mesh extras record
@@ -459,11 +470,12 @@ python3 tools/field_world_import.py archive \
   edited-field.glb extracted/f011_001.LB edited/f011_001.LB
 ```
 
-The importer validates the model hierarchy, animation tracks, mesh packets,
-materials, collision and resource transforms, embedded textures, optional
-automap, and transition rows before writing any output. Unsupported edits
-therefore cannot leave a partially accepted set of source resources. Unchanged
-composed scenes reproduce all five paired DDS1 and DDS2 resources byte-for-byte.
+The importer validates the model hierarchy, model and field animation tracks,
+mesh packets, materials, collision and resource transforms, embedded textures,
+optional automap, and transition rows before writing any output. Unsupported
+edits therefore cannot leave a partially accepted set of source resources.
+Unchanged composed scenes reproduce all five paired DDS1 and DDS2 resources
+byte-for-byte.
 
 ### Collision geometry and transform import
 
@@ -491,6 +503,17 @@ writing. Coordinates and transform components that still equal the exported
 values retain their original float bits, including signed zero and
 unrepresented fourth components.
 
+### Field camera and path motion import
+
+Type-9 translation, quaternion, scalar, and light key values can also be
+edited through the composed scene. Translation channels convert back through
+the recorded unit scale; changed quaternions are normalized before being
+stored. Scalar, light, or duplicate node-property tracks use their typed
+`ddsMotionTracks` values. Track kinds, order, key counts, frame keys, curve
+layout, and `word_0c` remain authoritative in `.fldasm`; an edit that changes
+that structure is rejected. Unchanged values retain their original float bits,
+including non-unit quaternion keys whose exported rotation is normalized.
+
 Collision face topology and controls remain in `.fldasm`, where their native
 meaning is represented without loss. FLD1 mesh streams use the separate model
 geometry importer above; FLD1 hierarchy and animation, AMB geometry, and
@@ -498,10 +521,9 @@ textures remain under their exact source tools. An unchanged scene imports
 byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering 5,533
 collision meshes and 17,282 collision, camera, and placement transforms.
 
-The scene layer validates all 1,232 supported FLD2 payload occurrences across
-both games: 5,533 collision resources and 167,623 output triangles, 1,551
-cameras, and 10,222 placements. The paired DDS1 and DDS2 composed fields pass
-the Khronos glTF validator without errors or warnings.
+Across all 1,212 tracked FLD2 files, the scene layer validates 5,533 collision
+resources and 167,623 output triangles, 1,551 cameras, 10,222 placements, and
+872 motion resources.
 
 Each transform is `0x30` bytes: four position floats, four rotation floats,
 and four scale floats. Each collision object also starts with a `0x30`-byte
@@ -576,9 +598,11 @@ keys 0 270
 The PS2 runtime linearly interpolates `vector3` tracks and normalized-linearly
 interpolates `quaternion` tracks. `scalar` values are single-float curves.
 `light` values contain ten floats per key and feed the runtime's light-path
-sampler. A curve's values and keys have matching indices; keys must increase
-strictly. The final serialized curve word is always one in the tracked data,
-but its purpose is not established, so source retains it as `word_0c`.
+sampler; their value directive is `motion_light` to distinguish them from the
+fixed FLD1 `light` resource. A curve's values and keys have matching indices;
+keys must increase strictly. The final serialized curve word is zero or one in
+the tracked data, but its purpose is not established, so source retains it as
+`word_0c`.
 
 ## Links to scripts and warp data
 
