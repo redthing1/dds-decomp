@@ -66,6 +66,10 @@ the following hold:
   development sites must remain a subset of the same named retail function
   offsets, while source rebuilt with `-G0` may replace declared retail sites
   with audited `HI16`/`LO16` relocations;
+- every moved writable section that overlaps the signed retail `_gp` window
+  declares exact retail and development GP-reference counts; no development
+  reference may still address its abandoned range, and any surviving sites
+  must retain their named function and intra-function offsets;
 - each development-only addition occupies its linker-derived span and retains
   its expected number of relocation entries; and
 - each static linker redirect starts at its asserted retail target and resolves
@@ -79,6 +83,11 @@ entry must declare its retail address, size, alignment, file storage, named
 symbol count, and development GP-reference count. If the retail count differs,
 `expected_retail_gp_references` declares it explicitly; otherwise it defaults
 to the development count. Nonempty retained NOBITS is unsupported.
+A writable move whose retail range overlaps the signed `_gp` window must set
+both `expected_retail_gp_references` and `expected_gp_references`. These counts
+cover physical GP-based address forms across the complete main text and all
+moved or development-only text, rather than only relocation records emitted by
+replacement code.
 A replacement source may contain `INCLUDE_ASM` only when its symbols are
 explicitly listed as fallbacks in source order. `INCLUDE_RODATA` and
 `INCLUDE_SDATA` remain unsupported for replacement objects.
