@@ -143,6 +143,38 @@ def common_symbols(nm_text):
     return result
 
 
+def section_symbols(objdump_text, section):
+    """Return (offset, size, name) definitions in one object section.
+
+    `nm` deliberately collapses `.data` and `.sdata` to the same symbol type,
+    while the ownership check needs to distinguish them.  The objdump symbol
+    table retains the defining section name.
+    """
+    result = []
+    for line in objdump_text.splitlines():
+        parts = line.split()
+        if len(parts) >= 6 and parts[-3] == section:
+            try:
+                result.append((int(parts[0], 16), int(parts[-2], 16), parts[-1]))
+            except ValueError:
+                pass
+    return result
+
+
+def owns_exact_section_item(definitions, syms, offset, size, retail_addr):
+    """Whether one exact object symbol maps this item to its retail address."""
+    return any(obj_off == offset and obj_size == size
+               and address(name, syms) == retail_addr
+               for obj_off, obj_size, name in definitions)
+
+
+def source_owned_item_size(definitions, syms, offset, retail_addr):
+    """Return an unambiguous source-owned item's declared size, if any."""
+    sizes = {obj_size for obj_off, obj_size, name in definitions
+             if obj_off == offset and address(name, syms) == retail_addr}
+    return sizes.pop() if len(sizes) == 1 else None
+
+
 def relocations(obj):
     """{section: {offset: (type, symbol)}} for verified content sections."""
     out, section = {name: {} for name in (".text", ".rodata", ".sdata")}, None
@@ -281,6 +313,9 @@ def main():
         defined_symbols = run(
             str(BIN / "mips-ps2-decompals-nm"), "-S", "--defined-only", str(obj)
         )
+        sdata_symbols = section_symbols(run(
+            str(BIN / "mips-ps2-decompals-objdump"), "-t", str(obj)
+        ), ".sdata")
         funcs = []
         for line in defined_symbols.splitlines():
             parts = line.split()
@@ -667,7 +702,9 @@ def main():
             continue
         end = next(s for s in sd_starts if s > off)
         item = sdata[off:end]
-        item = trim_sdata_item(item, off, sdata_relocs)
+        owned_size = source_owned_item_size(sdata_symbols, syms, off, retail_addr)
+        item = item[:owned_size] if owned_size is not None and owned_size <= len(item) \
+            else trim_sdata_item(item, off, sdata_relocs)
         theirs = retail[va_to_off(segs, retail_addr):][:len(item)]
         linked_item, relocation_problems = relocate_sdata_item(
             item, off, sdata_relocs, funcs, syms)
@@ -679,7 +716,8 @@ def main():
             bad += 1
             print(f"DIFF sdata of {name} (retail 0x{retail_addr:08X}): "
                   f"{linked_item[:24]!r} vs {theirs[:24]!r}")
-        elif users := asm_users(retail_addr):
+        elif (users := asm_users(retail_addr)) and not owns_exact_section_item(
+                sdata_symbols, syms, off, len(item), retail_addr):
             bad += 1
             print(f"SHARED sdata of {name} (retail 0x{retail_addr:08X}) is also used by asm {', '.join(users)}: "
                   "keep the extern D_ symbol until they are C")
