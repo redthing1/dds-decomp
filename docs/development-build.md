@@ -3,9 +3,9 @@
 The `dds1-dev` and `dds2-dev` targets build separate executables whose layouts
 can grow without weakening the byte-identical retail builds. Each target
 recompiles and replaces selected code, read-only data, and initialized
-small-data sections from eight paired code units, and moves two source-owned
-zero-initialized state objects. The replacements retain seven declared assembly
-fallback functions in DDS1 and six in DDS2. The targets also link
+small-data sections from eleven paired source objects, and moves three
+source-owned zero-initialized state objects. The replacements retain ten
+declared assembly fallback functions in DDS1 and nine in DDS2. The targets also link
 development-only C code and data into an appended loadable segment:
 
 ```sh
@@ -43,8 +43,9 @@ the following hold:
   symbol and addend;
 - every `R_MIPS_GPREL16` addend is resolved against one unique `_gp`, which
   must be identical in the retail and development links;
-- direct jumps, word-aligned absolute addresses, and common MIPS address
-  constructions do not still refer to the abandoned slot;
+- direct jumps, word-aligned raw addresses into moved text, byte-granular raw
+  addresses into moved data, and common MIPS address constructions do not
+  still refer to an abandoned slot;
 - the appended `PT_LOAD` does not overlap an existing segment and fits in an
   unused program-header slot;
 - file-backed moves come from file-backed input sections, while NOBITS moves
@@ -93,8 +94,10 @@ cover physical GP-based address forms across the complete main text and all
 moved or development-only text, rather than only relocation records emitted by
 replacement code.
 A replacement source may contain `INCLUDE_ASM` only when its symbols are
-explicitly listed as fallbacks in source order. `INCLUDE_RODATA` and
-`INCLUDE_SDATA` remain unsupported for replacement objects.
+explicitly listed as fallbacks in source order. `INCLUDE_SDATA` is accepted
+only when the object declares the corresponding nonempty `.sdata` section as
+retained and the retained-section audit succeeds. `INCLUDE_RODATA` remains
+unsupported for replacement objects.
 
 The descriptors for the current moves and their asserted binary sites are
 `config/dds1/devbuild.json` and `config/dds2/devbuild.json`. The checks
@@ -124,7 +127,7 @@ placing any of them in the retail link.
 ## Current scope
 
 These are relocatable development builds, not general mod loaders. Each
-version replaces eight paired units, then links one development entry object.
+version replaces eleven paired source objects, then links one development entry object.
 The first smaller replacement is compiled separately with `-G0`: its `.text`
 is `0x3D0` bytes rather than the retail `0x3C8`, so two later function
 definitions move by eight bytes. The mixed-source replacement grows from
@@ -170,13 +173,26 @@ reference remains to either the moved state or its abandoned retail range.
 The adjacent tick callback state stays at its retail address with exact bytes,
 symbols, and access signatures.
 
-Together the replacements move 142 DDS1 and 143 DDS2 exported symbols, plus
-five/three retained small-data symbols. Eighty-five moved definitions per title
-change their relative offsets. The verifier follows 1,411/1,450 external
-relocation sites targeting shifted definitions, 96/98 relocations between
-replacement objects, and 1,846/1,921 total relocation targets into moved
-content. The moved sections retain 668/684 relocation entries. All counts are
-asserted by the version descriptors.
+The paired general SDF heap is the next complete mutable lifecycle. Three
+source units per title move `0xD88` bytes of retail text, growing to `0xDA8`,
+along with the source-owned `0x28`-byte NOBITS heap root. Its two embedded
+sentinels, base, and size now have one canonical typed owner. Eight address
+materializations into that root become 16 audited target relocation records;
+the abandoned range has no surviving reference. Each leading unit retains an
+exact `0xC` `.sdata` island containing three symbols. Its three retail GP
+references become ordinary relocated address pairs in development, leaving
+zero physical GP references to the moved heap state. The three units retain
+three declared assembly fallbacks per title.
+
+Together the replacements move 168 DDS1 and 169 DDS2 exported symbols, plus
+eight/six retained linked symbols in four/three sections. Ninety moved
+definitions per title change their relative offsets. The verifier follows
+1,414/1,453 external relocation sites targeting shifted definitions, 126/128
+relocations between replacement objects, and 2,776/2,972 total relocation
+targets into moved content. The appended segments contain 764/780 relocation
+entries and occupy 18,384/18,608 file bytes plus 112 bytes of NOBITS memory.
+Ten/nine declared assembly fallbacks remain exact. All counts are asserted by
+the version descriptors.
 
 Replacement-owned code and read-only data may change size and contents. A
 declared, file-backed initialized small-data section may also move when all of
@@ -200,7 +216,7 @@ than by accidental retail addresses. It does not make that source host-native.
 The development ELFs still use the 32-bit Emotion Engine ABI, MIPS calling
 conventions, PS2 kernel handles, and the original SDF/IOP services. DMA-facing
 addresses and several callback values are carried in 32-bit integer fields,
-and the retained FileManager small-data section is intentionally an ABI island
+and the retained small-data sections are intentionally audited ABI islands
 inside the retail `$gp` window.
 
 The useful porting boundary is therefore explicit: the recovered state layout
