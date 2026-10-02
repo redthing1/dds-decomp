@@ -158,58 +158,6 @@ def _add_collision_mesh(
     return mesh_index
 
 
-def _add_marker_mesh(
-    builder: fld_model.GltfBuilder,
-    material: int,
-    size: float,
-) -> int:
-    positions = (
-        (size, 0.0, 0.0),
-        (-size, 0.0, 0.0),
-        (0.0, size, 0.0),
-        (0.0, -size, 0.0),
-        (0.0, 0.0, size),
-        (0.0, 0.0, -size),
-    )
-    triangles = (
-        0, 2, 4, 2, 1, 4, 1, 3, 4, 3, 0, 4,
-        2, 0, 5, 1, 2, 5, 3, 1, 5, 0, 3, 5,
-    )
-    position_accessor = builder.accessor(
-        fld_model._pack_floats(positions),
-        fld_model.FLOAT,
-        "VEC3",
-        len(positions),
-        target=fld_model.ARRAY_BUFFER,
-        minimum=[-size, -size, -size],
-        maximum=[size, size, size],
-    )
-    index_accessor = builder.accessor(
-        bytes(triangles),
-        fld_model.UNSIGNED_BYTE,
-        "SCALAR",
-        len(triangles),
-        target=fld_model.ELEMENT_ARRAY_BUFFER,
-        minimum=[0],
-        maximum=[5],
-    )
-    mesh_index = len(builder.document["meshes"])
-    builder.document["meshes"].append(
-        {
-            "name": "FLD2 placement marker",
-            "primitives": [
-                {
-                    "attributes": {"POSITION": position_accessor},
-                    "indices": index_accessor,
-                    "material": material,
-                    "mode": 4,
-                }
-            ],
-        }
-    )
-    return mesh_index
-
-
 def append_field_scene(
     document: dict,
     binary: bytes,
@@ -296,8 +244,9 @@ def append_field_scene(
                     marker_material = _unlit_material(
                         document, "FLD2 placement", [1.0, 0.15, 0.65, 1.0]
                     )
-                    marker_mesh = _add_marker_mesh(
+                    marker_mesh = fld_model.add_marker_mesh(
                         builder,
+                        "FLD2 placement marker",
                         marker_material,
                         placement_marker_size * meters_per_unit,
                     )
