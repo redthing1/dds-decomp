@@ -54,6 +54,22 @@ HIERARCHY_SOURCE = SOURCE.replace("model_items count=1", "model_items count=2").
     "label bounds",
 )
 
+EULER_MOTION_SOURCE = EDIT_SOURCE.replace(
+    "selector=translation", "selector=euler_rotation"
+).replace(
+    "motion_vector3 0,0,0 100,0,0",
+    "motion_vector3 0,0,0 0.1,0.2,0.3",
+)
+
+QUATERNION_MOTION_SOURCE = EDIT_SOURCE.replace(
+    "selector=translation", "selector=quaternion"
+).replace(
+    "format=vector3", "format=quaternion_s16"
+).replace(
+    "motion_vector3 0,0,0 100,0,0",
+    "motion_quaternion_s16 0,0,0,4096 0,0,0,4096",
+)
+
 
 def accessor_offset(document: dict, accessor_index: int) -> int:
     accessor = document["accessors"][accessor_index]
@@ -90,6 +106,29 @@ def first_material(data: bytes) -> fld.ModelMaterial:
     )[0]
 
 
+def first_motion_track(data: bytes) -> fld.ModelMotionTrack:
+    words, data_end, relocations = fld._read_header(data)
+    resources = fld._read_resources(data, fld._read_types(data, words, data_end))
+    resource = next(resource for resource in resources if resource.type_id == 2)
+    model, items = fld._read_model_resource(data, resource.data, data_end, "test")
+    materials = fld._read_model_materials(
+        data, model.materials, data_end, "test materials"
+    )
+    motion = fld._read_model_motion(
+        data,
+        model.motion,
+        data_end,
+        set(relocations),
+        len(items),
+        len(materials),
+        "test motion",
+    )
+    clip = motion.clips[0]
+    if clip is None:
+        raise AssertionError("test fixture has no first motion clip")
+    return clip.tracks[0]
+
+
 class FldModelImportTests(unittest.TestCase):
     def setUp(self) -> None:
         self.data = fld.encode(fld.parse_source(EDIT_SOURCE))
@@ -109,7 +148,7 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_model_import.ImportSummary(
-                1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0
+                1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 1, 1, 0
             ),
         )
 
@@ -143,7 +182,7 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_model_import.ImportSummary(
-                1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 1
+                1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 1, 1, 1, 0
             ),
         )
         mesh = first_mesh(rebuilt)
@@ -184,7 +223,7 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_model_import.ImportSummary(
-                1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0
+                1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 1, 1, 0
             ),
         )
         self.assertEqual(first_mesh(rebuilt).attributes[0][0], 2.5)
@@ -270,6 +309,109 @@ class FldModelImportTests(unittest.TestCase):
             fld_model_import.ModelImportError, "hierarchy contains a cycle"
         ):
             fld_model_import.import_geometry(data, document, binary)
+
+    def test_imports_motion_values_and_preserves_frame_keys(self) -> None:
+        animation = self.document["animations"][0]
+        sampler = animation["samplers"][0]
+        output_offset = accessor_offset(self.document, sampler["output"])
+        struct.pack_into("<f", self.binary, output_offset + 12, 2.5)
+
+        rebuilt, summary = fld_model_import.import_geometry(
+            self.data, self.document, bytes(self.binary)
+        )
+        self.assertEqual(summary.animations, 1)
+        self.assertEqual(summary.tracks, 1)
+        self.assertEqual(summary.changed_tracks, 1)
+        track = first_motion_track(rebuilt)
+        self.assertEqual(track.frames, (0, 30))
+        self.assertEqual(
+            fld_model._track_values(rebuilt, track)[1], (250.0, 0.0, 0.0)
+        )
+
+        time_offset = accessor_offset(self.document, sampler["input"])
+        struct.pack_into("<f", self.binary, time_offset + 4, 0.5)
+        with self.assertRaisesRegex(
+            fld_model_import.ModelImportError, "changes its frame keys"
+        ):
+            fld_model_import.import_geometry(
+                self.data, self.document, bytes(self.binary)
+            )
+
+    def test_imports_scale_motion(self) -> None:
+        data = fld.encode(
+            fld.parse_source(
+                EDIT_SOURCE.replace("selector=translation", "selector=scale")
+            )
+        )
+        document, binary = fld_model.build_gltf(data)
+        binary = bytearray(binary)
+        sampler = document["animations"][0]["samplers"][0]
+        output_offset = accessor_offset(document, sampler["output"])
+        struct.pack_into("<f", binary, output_offset + 16, 2.5)
+
+        rebuilt, summary = fld_model_import.import_geometry(
+            data, document, bytes(binary)
+        )
+        self.assertEqual(summary.changed_tracks, 1)
+        track = first_motion_track(rebuilt)
+        self.assertEqual(
+            fld_model._track_values(rebuilt, track)[1], (100.0, 2.5, 0.0)
+        )
+
+    def test_rejects_added_motion_clip(self) -> None:
+        duplicate = dict(self.document["animations"][0])
+        duplicate["name"] = "unexpected/clip_0"
+        self.document["animations"].append(duplicate)
+        with self.assertRaisesRegex(
+            fld_model_import.ModelImportError,
+            "changes the selected models' animation set",
+        ):
+            fld_model_import.import_geometry(
+                self.data, self.document, bytes(self.binary)
+            )
+
+    def test_imports_euler_and_packed_quaternion_motion(self) -> None:
+        for source, expected_format in (
+            (EULER_MOTION_SOURCE, "vector3"),
+            (QUATERNION_MOTION_SOURCE, "quaternion_s16"),
+        ):
+            with self.subTest(format=expected_format):
+                data = fld.encode(fld.parse_source(source))
+                document, binary = fld_model.build_gltf(data)
+                binary = bytearray(binary)
+                sampler = document["animations"][0]["samplers"][0]
+                output_offset = accessor_offset(document, sampler["output"])
+                target = fld_model._euler_quaternion(0.4, -0.2, 0.7)
+                struct.pack_into("<4f", binary, output_offset + 16, *target)
+
+                rebuilt, summary = fld_model_import.import_geometry(
+                    data, document, bytes(binary)
+                )
+                self.assertEqual(summary.changed_tracks, 1)
+                track = first_motion_track(rebuilt)
+                values = fld_model._track_values(rebuilt, track)[1]
+                if expected_format == "vector3":
+                    for actual, expected in zip(
+                        values, (0.4, -0.2, 0.7), strict=True
+                    ):
+                        self.assertAlmostEqual(actual, expected, places=6)
+                else:
+                    rebuilt_rotation = fld_model._normalized_quaternion(
+                        tuple(float(value) / 4096.0 for value in values)
+                    )
+                    self.assertAlmostEqual(
+                        abs(sum(a * b for a, b in zip(rebuilt_rotation, target))),
+                        1.0,
+                        places=6,
+                    )
+
+    def test_tracked_fld1_sources_round_trip_through_gltf(self) -> None:
+        for version in ("dds1", "dds2"):
+            path = ROOT / "src" / version / "data" / "field" / "f011_001.f1asm"
+            data = fld.encode(fld.parse_source(path.read_text(encoding="utf-8")))
+            document, binary = fld_model.build_gltf(data)
+            rebuilt, _ = fld_model_import.import_geometry(data, document, binary)
+            self.assertEqual(rebuilt, data, path.name)
 
     def test_imports_semantic_material_fields(self) -> None:
         gltf_material = self.document["materials"][self.primitive["material"]]

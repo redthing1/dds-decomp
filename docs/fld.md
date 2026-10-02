@@ -350,9 +350,18 @@ streams must also have one consistent edit. The importer rejects a GLB that
 changes any of these properties instead of rebuilding a different packet
 program implicitly.
 
-Motion tracks remain authoritative in FLD1 source. The same hierarchy,
-transform, bounds, material, and packet-preserving engine handles standalone
-automap models through `tools/amb_scene_import.py`.
+Motion layout and tracks not represented in glTF remain authoritative in FLD1
+source. The same hierarchy, transform, bounds, material, and packet-preserving
+engine handles standalone automap models through `tools/amb_scene_import.py`.
+
+The glTF animation channels also accept value edits for node translation,
+scale, Euler rotation, and packed quaternion tracks. Translation keys use the
+recorded unit scale, glTF quaternions convert back to the binding's native
+rotation form, and equivalent sign-flipped quaternions preserve the original
+bytes. Binding order, targets, frame keys, key count, interpolation, stride,
+and clip layout must remain unchanged. Unordered tracks skipped by the exporter,
+bit-valued node tracks, and material-property tracks remain editable in exact
+`.f1asm` source because glTF core does not represent them faithfully.
 
 ### Composed field export
 

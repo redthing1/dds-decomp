@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import edited FLD1 geometry and material parameters from a DDS model GLB."""
+"""Import edited FLD1 model data from a DDS model GLB."""
 
 from __future__ import annotations
 
@@ -94,6 +94,15 @@ def import_geometry(
             relocations,
             f"model {source_name}",
         )
+        motion = fld._read_model_motion(
+            field_data,
+            model.motion,
+            data_end,
+            relocations,
+            len(items),
+            len(materials),
+            f"model {source_name} motion",
+        )
         graphs.append(
             ModelGraph(
                 source_name,
@@ -103,6 +112,7 @@ def import_geometry(
                 draw_lists,
                 draws,
                 resource.transform,
+                motion,
             )
         )
 
@@ -146,7 +156,8 @@ def main() -> None:
         f"{summary.colors} color streams); changed {summary.changed_nodes} "
         f"model nodes ({summary.translations} translations, "
         f"{summary.rotations} rotations, {summary.scales} scales, "
-        f"{summary.parents} parents) and expanded {summary.bounds} bounds"
+        f"{summary.parents} parents), expanded {summary.bounds} bounds, and "
+        f"changed {summary.changed_tracks} of {summary.tracks} animation tracks"
     )
 
 

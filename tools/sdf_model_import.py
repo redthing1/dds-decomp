@@ -36,6 +36,9 @@ class ImportSummary:
     scales: int = 0
     parents: int = 0
     bounds: int = 0
+    animations: int = 0
+    tracks: int = 0
+    changed_tracks: int = 0
 
 
 @dataclass(frozen=True)
@@ -47,9 +50,10 @@ class ModelGraph:
     draw_lists: dict[int, fld.ModelDrawList]
     draws: dict[int, fld.ModelDraw]
     root_transform: int = 0
+    motion: fld.ModelMotionPlaybook | None = None
 
 
-def _asset_metadata(document: dict) -> tuple[float, int | None]:
+def _asset_metadata(document: dict) -> tuple[float, float | None, int | None]:
     asset = document.get("asset")
     extras = asset.get("extras") if isinstance(asset, dict) else None
     if not isinstance(extras, dict):
@@ -59,6 +63,14 @@ def _asset_metadata(document: dict) -> tuple[float, int | None]:
         raise ModelImportError("GLB has no positive finite DDS unit scale")
     if extras.get("ddsNativeAxesPreserved") is not True:
         raise ModelImportError("GLB does not preserve native DDS axes")
+    frames_per_second = extras.get("ddsFramesPerSecond")
+    if frames_per_second is not None and (
+        not isinstance(frames_per_second, (int, float))
+        or isinstance(frames_per_second, bool)
+        or not math.isfinite(frames_per_second)
+        or frames_per_second <= 0
+    ):
+        raise ModelImportError("GLB has an invalid DDS frame rate")
     texture_count = extras.get("ddsTextureCount")
     if texture_count is not None and (
         not isinstance(texture_count, int)
@@ -66,7 +78,11 @@ def _asset_metadata(document: dict) -> tuple[float, int | None]:
         or texture_count < 0
     ):
         raise ModelImportError("GLB has an invalid DDS texture count")
-    return float(scale), texture_count
+    return (
+        float(scale),
+        float(frames_per_second) if frames_per_second is not None else None,
+        texture_count,
+    )
 
 
 def _node_vector(
@@ -131,6 +147,29 @@ def _quaternion_euler(rotation: tuple[float, ...], context: str) -> tuple[float,
 
 def _same_rotation(actual: tuple[float, ...], expected: list[float]) -> bool:
     return actual == tuple(expected) or actual == tuple(-value for value in expected)
+
+
+def _represented_motion_tracks(
+    motion: fld.ModelMotionPlaybook,
+    clip: fld.ModelMotionClip,
+) -> tuple[
+    tuple[tuple[int, fld.ModelMotionBinding, fld.ModelMotionTrack], ...],
+    tuple[int, ...],
+]:
+    represented = []
+    skipped = []
+    for binding_index, (binding, track) in enumerate(
+        zip(motion.bindings, clip.tracks, strict=True)
+    ):
+        if binding.family != 0 or binding.selector == 4:
+            continue
+        if any(
+            left >= right for left, right in zip(track.frames, track.frames[1:])
+        ):
+            skipped.append(binding_index)
+            continue
+        represented.append((binding_index, binding, track))
+    return tuple(represented), tuple(skipped)
 
 
 def _patch_graph_nodes(
@@ -332,15 +371,215 @@ def _patch_graph_nodes(
     return item_nodes, counts
 
 
+def _patch_graph_animations(
+    source_data: bytes,
+    output: bytearray,
+    document: dict,
+    binary: bytes,
+    graph: ModelGraph,
+    item_nodes: dict[int, dict],
+    meters_per_unit: float,
+    frames_per_second: float | None,
+) -> tuple[int, int, int]:
+    motion = graph.motion
+    if motion is None:
+        return 0, 0, 0
+    if frames_per_second is None:
+        raise ModelImportError("GLB has no positive finite DDS frame rate")
+    animations = document.get("animations", [])
+    if not isinstance(animations, list):
+        raise ModelImportError("GLB has an invalid animation array")
+    nodes = document.get("nodes")
+    if not isinstance(nodes, list):
+        raise ModelImportError("GLB has no node array")
+    node_indices = {
+        node_id: next(
+            index for index, candidate in enumerate(nodes) if candidate is node
+        )
+        for node_id, node in item_nodes.items()
+    }
+
+    imported_animations = imported_tracks = changed_tracks = 0
+    for clip_index, clip in enumerate(motion.clips):
+        if clip is None:
+            continue
+        expected, skipped = _represented_motion_tracks(motion, clip)
+        if not expected:
+            continue
+
+        name = f"{graph.name}/clip_{clip_index}"
+        matches = [
+            animation
+            for animation in animations
+            if isinstance(animation, dict) and animation.get("name") == name
+        ]
+        if len(matches) != 1:
+            raise ModelImportError(
+                f"model {graph.name} clip {clip_index} has {len(matches)} "
+                "GLB animations, expected 1"
+            )
+        animation = matches[0]
+        extras = animation.get("extras")
+        metadata = {
+            "ddsDurationFrames": clip.duration,
+            "ddsReserved": clip.reserved,
+            "ddsIgnoredMaterialBindings": sum(
+                binding.family == 1 for binding in motion.bindings
+            ),
+        }
+        if skipped:
+            metadata["ddsSkippedUnorderedBindings"] = skipped
+        if not isinstance(extras, dict) or any(
+            extras.get(key) != value for key, value in metadata.items()
+        ):
+            raise ModelImportError(f"animation {name!r} DDS metadata differs")
+        samplers = animation.get("samplers")
+        channels = animation.get("channels")
+        if (
+            not isinstance(samplers, list)
+            or not isinstance(channels, list)
+            or len(samplers) != len(expected)
+            or len(channels) != len(expected)
+        ):
+            raise ModelImportError(f"animation {name!r} changes its channel layout")
+
+        for channel_index, (binding_index, binding, track) in enumerate(expected):
+            context = f"animation {name!r} binding {binding_index}"
+            channel = channels[channel_index]
+            if not isinstance(channel, dict):
+                raise ModelImportError(f"{context} has an invalid channel")
+            sampler_index = channel.get("sampler")
+            if sampler_index != channel_index:
+                raise ModelImportError(f"{context} changes its sampler identity")
+            sampler = samplers[channel_index]
+            if (
+                not isinstance(sampler, dict)
+                or sampler.get("interpolation", "LINEAR") != "LINEAR"
+            ):
+                raise ModelImportError(f"{context} changes its interpolation")
+            if binding.selector in {1, 3}:
+                path = "rotation"
+            elif binding.selector == 0:
+                path = "translation"
+            else:
+                path = "scale"
+            target = channel.get("target")
+            if not isinstance(target, dict) or target != {
+                "node": node_indices[binding.target],
+                "path": path,
+            }:
+                raise ModelImportError(f"{context} changes its target")
+            times = _records(
+                document,
+                binary,
+                sampler.get("input"),
+                "SCALAR",
+                {fld_model.FLOAT},
+                context + " times",
+                normalized=False,
+            )
+            expected_times = tuple(
+                (_f32(float(frame) / frames_per_second),)
+                for frame in track.frames
+            )
+            if times != expected_times:
+                raise ModelImportError(f"{context} changes its frame keys")
+
+            width = 4 if path == "rotation" else 3
+            values = _records(
+                document,
+                binary,
+                sampler.get("output"),
+                f"VEC{width}",
+                {fld_model.FLOAT},
+                context + " values",
+                normalized=False,
+            )
+            source_values = fld_model._track_values(source_data, track)
+            if len(values) != len(source_values):
+                raise ModelImportError(f"{context} changes its key count")
+            track_changed = False
+            for key_index, (actual, native) in enumerate(
+                zip(values, source_values, strict=True)
+            ):
+                if not all(
+                    isinstance(value, float) and math.isfinite(value)
+                    for value in actual
+                ):
+                    raise ModelImportError(f"{context} has non-finite values")
+                value_offset = track.values + key_index * track.stride
+                if binding.selector == 0:
+                    exported = tuple(
+                        _f32(float(value) * meters_per_unit) for value in native
+                    )
+                    edited = tuple(
+                        old_native if value == old else value / meters_per_unit
+                        for value, old, old_native in zip(
+                            actual, exported, native, strict=True
+                        )
+                    )
+                    if actual != exported:
+                        _write_floats(output, value_offset, edited, context)
+                        track_changed = True
+                elif binding.selector == 2:
+                    exported = tuple(_f32(float(value)) for value in native)
+                    edited = tuple(
+                        old_native if value == old else value
+                        for value, old, old_native in zip(
+                            actual, exported, native, strict=True
+                        )
+                    )
+                    if actual != exported:
+                        _write_floats(output, value_offset, edited, context)
+                        track_changed = True
+                else:
+                    exported = (
+                        fld_model._euler_quaternion(*native)
+                        if binding.selector == 1
+                        else fld_model._normalized_quaternion(
+                            tuple(float(value) / 4096.0 for value in native)
+                        )
+                    )
+                    expected_rotation = [_f32(value) for value in exported]
+                    if _same_rotation(actual, expected_rotation):
+                        continue
+                    length = math.sqrt(sum(value * value for value in actual))
+                    if not math.isfinite(length) or length == 0.0:
+                        raise ModelImportError(
+                            f"{context} key {key_index} is not a finite quaternion"
+                        )
+                    normalized = tuple(value / length for value in actual)
+                    if binding.selector == 1:
+                        _write_floats(
+                            output,
+                            value_offset,
+                            _quaternion_euler(normalized, context),
+                            context,
+                        )
+                    else:
+                        packed = tuple(round(value * 4096.0) for value in normalized)
+                        if any(not -32768 <= value <= 32767 for value in packed):
+                            raise ModelImportError(
+                                f"{context} key {key_index} exceeds packed "
+                                "quaternion range"
+                            )
+                        struct.pack_into("<4h", output, value_offset, *packed)
+                    track_changed = True
+            imported_tracks += 1
+            changed_tracks += track_changed
+        imported_animations += 1
+    return imported_animations, imported_tracks, changed_tracks
+
+
 def import_model_graphs(
     source_data: bytes,
     document: dict,
     binary: bytes,
     graphs: tuple[ModelGraph, ...],
 ) -> tuple[bytes, ImportSummary]:
-    """Apply changed model nodes, materials, and vertex data in place."""
+    """Apply changed model nodes, animation, materials, and vertices in place."""
 
-    meters_per_unit, texture_count = _asset_metadata(document)
+    meters_per_unit, frames_per_second, texture_count = _asset_metadata(document)
     meshes = document.get("meshes")
     if not isinstance(meshes, list):
         raise ModelImportError("GLB has no mesh array")
@@ -350,6 +589,28 @@ def import_model_graphs(
     if len(set(graph_names)) != len(graph_names):
         raise ModelImportError("selected SDF model graphs repeat a name")
     selected_prefixes = tuple(f"{name}/node_" for name in graph_names)
+
+    animations = document.get("animations", [])
+    if not isinstance(animations, list) or any(
+        not isinstance(animation, dict)
+        or not isinstance(animation.get("name"), str)
+        for animation in animations
+    ):
+        raise ModelImportError("GLB has an invalid animation array")
+    animation_names = tuple(animation["name"] for animation in animations)
+    expected_animation_names = tuple(
+        f"{graph.name}/clip_{clip_index}"
+        for graph in graphs
+        if graph.motion is not None
+        for clip_index, clip in enumerate(graph.motion.clips)
+        if clip is not None
+        and _represented_motion_tracks(graph.motion, clip)[0]
+    )
+    if (
+        len(set(animation_names)) != len(animation_names)
+        or set(animation_names) != set(expected_animation_names)
+    ):
+        raise ModelImportError("GLB changes the selected models' animation set")
 
     graph_nodes: dict[str, dict[int, dict]] = {}
     node_changes = {
@@ -364,6 +625,7 @@ def import_model_graphs(
         )
     }
     output = bytearray(source_data)
+    animation_changes = {"animations": 0, "tracks": 0, "changed_tracks": 0}
     for graph in graphs:
         item_nodes, counts = _patch_graph_nodes(
             source_data, output, document, graph, meters_per_unit
@@ -371,6 +633,19 @@ def import_model_graphs(
         graph_nodes[graph.name] = item_nodes
         for name, count in counts.items():
             node_changes[name] += count
+        animations, tracks, changed_tracks = _patch_graph_animations(
+            source_data,
+            output,
+            document,
+            binary,
+            graph,
+            item_nodes,
+            meters_per_unit,
+            frames_per_second,
+        )
+        animation_changes["animations"] += animations
+        animation_changes["tracks"] += tracks
+        animation_changes["changed_tracks"] += changed_tracks
 
     meshes_by_name: dict[str, dict] = {}
     mesh_indices_by_name: dict[str, int] = {}
@@ -920,4 +1195,7 @@ def import_model_graphs(
         node_changes["scales"],
         node_changes["parents"],
         len(changed_bounds),
+        animation_changes["animations"],
+        animation_changes["tracks"],
+        animation_changes["changed_tracks"],
     )
