@@ -3,9 +3,9 @@
 The `dds1-dev` and `dds2-dev` targets build separate executables whose layouts
 can grow without weakening the byte-identical retail builds. Each target
 recompiles and replaces selected code, read-only data, and initialized
-small-data sections from five paired code units, and moves one source-owned
-zero-initialized state object. The replacements retain seven declared assembly
-fallback functions in each title. The targets also link
+small-data sections from eight paired code units, and moves two source-owned
+zero-initialized state objects. The replacements retain seven declared assembly
+fallback functions in DDS1 and six in DDS2. The targets also link
 development-only C code and data into an appended loadable segment:
 
 ```sh
@@ -83,6 +83,10 @@ entry must declare its retail address, size, alignment, file storage, named
 symbol count, and development GP-reference count. If the retail count differs,
 `expected_retail_gp_references` declares it explicitly; otherwise it defaults
 to the development count. Nonempty retained NOBITS is unsupported.
+The optional `allow_shifted_gp_reference_offsets` is limited to retained state
+whose access instructions move within expanded replacement functions. It still
+requires the same containing functions, opcodes, registers, target offsets,
+and multiplicities; without it, intra-function offsets must match exactly.
 A writable move whose retail range overlaps the signed `_gp` window must set
 both `expected_retail_gp_references` and `expected_gp_references`. These counts
 cover physical GP-based address forms across the complete main text and all
@@ -120,7 +124,7 @@ placing any of them in the retail link.
 ## Current scope
 
 These are relocatable development builds, not general mod loaders. Each
-version replaces five paired units, then links one development entry object.
+version replaces eight paired units, then links one development entry object.
 The first smaller replacement is compiled separately with `-G0`: its `.text`
 is `0x3D0` bytes rather than the retail `0x3C8`, so two later function
 definitions move by eight bytes. The mixed-source replacement grows from
@@ -157,13 +161,22 @@ retained-section audit proves those six/six physical references at the
 same fallback-function offsets, exact retained objects, and an unchanged `_gp`
 instead of silently splitting the live state.
 
-Together the replacements move 120 DDS1 and 121 DDS2 exported symbols, plus
-two retained FileManager small-data symbols per title. Seventy-three moved
-definitions per title change their relative offsets. The verifier follows
-1,089/1,113 external relocation sites targeting shifted definitions, 75/77
-relocations between replacement objects, and 1,461/1,521 total relocation
-targets into moved content. The moved sections retain 549/563 relocation
-entries. All counts are asserted by the version descriptors.
+The paired SDF thread registry is the first moved small-BSS state. Three source
+units per title own and consume its semaphore and linked-list head. Their
+retail text totals `0x698` bytes; the development text grows to `0x728` in DDS1
+and `0x730` in DDS2. All 15 retail GP-relative accesses to the eight-byte
+registry become 23 audited HI16/LO16 relocation records, and no physical GP
+reference remains to either the moved state or its abandoned retail range.
+The adjacent tick callback state stays at its retail address with exact bytes,
+symbols, and access signatures.
+
+Together the replacements move 142 DDS1 and 143 DDS2 exported symbols, plus
+five/three retained small-data symbols. Eighty-five moved definitions per title
+change their relative offsets. The verifier follows 1,411/1,450 external
+relocation sites targeting shifted definitions, 96/98 relocations between
+replacement objects, and 1,846/1,921 total relocation targets into moved
+content. The moved sections retain 668/684 relocation entries. All counts are
+asserted by the version descriptors.
 
 Replacement-owned code and read-only data may change size and contents. A
 declared, file-backed initialized small-data section may also move when all of

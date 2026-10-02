@@ -2354,6 +2354,62 @@ def _gp_reference_identities(
     return sorted(result)
 
 
+def _gp_reference_signatures(
+    image: bytes,
+    programs: list[ProgramHeader],
+    gp: int,
+    section_start: int,
+    sites: list[int],
+    symbols: list[LinkedSymbol],
+    context: str,
+) -> list[tuple[str, int, int, int]]:
+    """Describe GP accesses while allowing their offsets inside a function to move."""
+
+    result = []
+    for site in sites:
+        names = {
+            symbol.name
+            for symbol in symbols
+            if symbol.name
+            and symbol.size
+            and symbol.section_index != SHN_UNDEF
+            and symbol.binding in (STB_GLOBAL, STB_WEAK)
+            and symbol.kind == STT_FUNC
+            and symbol.value <= site < symbol.value + symbol.size
+        }
+        if len(names) != 1:
+            raise DevElfError(
+                f"{context} GP reference at 0x{site:X} has "
+                f"{len(names)} containing functions, expected one"
+            )
+        file_offset = _file_offset_for_vaddr(programs, site)
+        if file_offset is None:
+            raise DevElfError(f"{context} GP reference at 0x{site:X} is not file-backed")
+        word = _unpack_word(image, file_offset, f"{context} GP-reference signature")
+        displacement = word & 0xFFFF
+        if displacement & 0x8000:
+            displacement -= 0x10000
+        target = (gp + displacement) & 0xFFFFFFFF
+        result.append(
+            (
+                next(iter(names)),
+                word >> 26,
+                (word >> 16) & 0x1F,
+                target - section_start,
+            )
+        )
+    return sorted(result)
+
+
+def _is_multiset_subset(values: list[Any], candidates: list[Any]) -> bool:
+    remaining = list(candidates)
+    for value in values:
+        if value not in remaining:
+            return False
+        remaining.remove(value)
+    return True
+
+
 def _main_text_range(
     symbols: list[LinkedSymbol], context: str
 ) -> tuple[int, int]:
@@ -2692,7 +2748,35 @@ def _audit_retained_sections(
         development_identities = _gp_reference_identities(
             development_sites, development_symbols, f"{context} development"
         )
-        if not set(development_identities).issubset(retail_identities):
+        allow_shifted_offsets = entry.get(
+            "allow_shifted_gp_reference_offsets", False
+        )
+        if not isinstance(allow_shifted_offsets, bool):
+            raise DevElfError(
+                f"{context}.allow_shifted_gp_reference_offsets must be boolean"
+            )
+        if allow_shifted_offsets:
+            retail_signatures = _gp_reference_signatures(
+                base,
+                base_programs,
+                development_gp,
+                old_vaddr,
+                retail_sites,
+                retail_symbols,
+                f"{context} retail",
+            )
+            development_signatures = _gp_reference_signatures(
+                output,
+                output_programs,
+                development_gp,
+                old_vaddr,
+                development_sites,
+                development_symbols,
+                f"{context} development",
+            )
+            if not _is_multiset_subset(development_signatures, retail_signatures):
+                raise DevElfError(f"{context} changed its GP-reference signatures")
+        elif not set(development_identities).issubset(retail_identities):
             raise DevElfError(f"{context} changed its GP-reference sites")
         retained_symbol_count += len(retail_contract)
         raw_gp_count += len(development_sites)
