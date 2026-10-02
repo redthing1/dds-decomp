@@ -29,6 +29,13 @@ class ImportSummary:
     colors: int
     materials: int
     changed_materials: int
+    nodes: int = 0
+    changed_nodes: int = 0
+    translations: int = 0
+    rotations: int = 0
+    scales: int = 0
+    parents: int = 0
+    bounds: int = 0
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,7 @@ class ModelGraph:
     draw_roots: dict[int, tuple[int, ...]]
     draw_lists: dict[int, fld.ModelDrawList]
     draws: dict[int, fld.ModelDraw]
+    root_transform: int = 0
 
 
 def _asset_metadata(document: dict) -> tuple[float, int | None]:
@@ -61,13 +69,276 @@ def _asset_metadata(document: dict) -> tuple[float, int | None]:
     return float(scale), texture_count
 
 
+def _node_vector(
+    node: dict,
+    key: str,
+    width: int,
+    default: tuple[float, ...],
+    context: str,
+) -> tuple[float, ...]:
+    value = node.get(key, list(default))
+    if (
+        not isinstance(value, list)
+        or len(value) != width
+        or any(
+            not isinstance(item, (int, float))
+            or isinstance(item, bool)
+            or not math.isfinite(item)
+            for item in value
+        )
+    ):
+        raise ModelImportError(f"{context} has an invalid {key}")
+    return tuple(float(item) for item in value)
+
+
+def _write_floats(
+    output: bytearray,
+    offset: int,
+    values: tuple[float, ...],
+    context: str,
+) -> None:
+    try:
+        struct.pack_into(f"<{len(values)}f", output, offset, *values)
+    except (OverflowError, struct.error) as exc:
+        raise ModelImportError(
+            f"{context} cannot be represented as native float32 values"
+        ) from exc
+
+
+def _quaternion_euler(rotation: tuple[float, ...], context: str) -> tuple[float, ...]:
+    """Invert the DDS Rx(-x) * Ry(-y) * Rz(-z) Euler conversion."""
+
+    length = math.sqrt(sum(value * value for value in rotation))
+    if not math.isfinite(length) or length == 0.0:
+        raise ModelImportError(f"{context} is not a finite quaternion")
+    x, y, z, w = (value / length for value in rotation)
+    r00 = 1.0 - 2.0 * (y * y + z * z)
+    r01 = 2.0 * (x * y - z * w)
+    r02 = max(-1.0, min(1.0, 2.0 * (x * z + y * w)))
+    r10 = 2.0 * (x * y + z * w)
+    r11 = 1.0 - 2.0 * (x * x + z * z)
+    r12 = 2.0 * (y * z - x * w)
+    r22 = 1.0 - 2.0 * (x * x + y * y)
+    converted_y = math.asin(r02)
+    if abs(math.cos(converted_y)) > 1e-7:
+        converted_x = math.atan2(-r12, r22)
+        converted_z = math.atan2(-r01, r00)
+    else:
+        converted_x = math.copysign(math.atan2(r10, r11), converted_y)
+        converted_z = 0.0
+    return -converted_x, -converted_y, -converted_z
+
+
+def _same_rotation(actual: tuple[float, ...], expected: list[float]) -> bool:
+    return actual == tuple(expected) or actual == tuple(-value for value in expected)
+
+
+def _patch_graph_nodes(
+    source_data: bytes,
+    output: bytearray,
+    document: dict,
+    graph: ModelGraph,
+    meters_per_unit: float,
+) -> tuple[dict[int, dict], dict[str, int]]:
+    nodes = document.get("nodes")
+    if not isinstance(nodes, list):
+        raise ModelImportError("GLB has no node array")
+    wrapper_indices = [
+        index
+        for index, node in enumerate(nodes)
+        if isinstance(node, dict) and node.get("name") == graph.name
+    ]
+    if len(wrapper_indices) != 1:
+        raise ModelImportError(
+            f"model {graph.name} has {len(wrapper_indices)} GLB wrappers, expected 1"
+        )
+    wrapper_index = wrapper_indices[0]
+    wrapper = nodes[wrapper_index]
+
+    item_nodes: dict[int, dict] = {}
+    item_indices: dict[int, int] = {}
+    for item in graph.items:
+        name = f"{graph.name}/node_{item.node_id}"
+        matches = [
+            (index, node)
+            for index, node in enumerate(nodes)
+            if isinstance(node, dict) and node.get("name") == name
+        ]
+        if len(matches) != 1:
+            raise ModelImportError(
+                f"model {graph.name} node {item.node_id} has {len(matches)} "
+                "GLB representations, expected 1"
+            )
+        node_index, node = matches[0]
+        extras = node.get("extras")
+        if not isinstance(extras, dict) or extras.get("ddsNodeId") != item.node_id:
+            raise ModelImportError(f"model node {name!r} changes its DDS identity")
+        item_nodes[item.node_id] = node
+        item_indices[item.node_id] = node_index
+
+    by_gltf_index = {index: node_id for node_id, index in item_indices.items()}
+    parents: dict[int, list[int]] = {node_id: [] for node_id in item_nodes}
+    for parent_index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            continue
+        children = node.get("children", [])
+        if not isinstance(children, (list, tuple)) or any(
+            not isinstance(child, int) or isinstance(child, bool) for child in children
+        ):
+            raise ModelImportError(
+                f"node {node.get('name', '<unnamed>')!r} has invalid children"
+            )
+        for child in children:
+            child_id = by_gltf_index.get(child)
+            if child_id is not None:
+                parents[child_id].append(parent_index)
+
+    native_parents: dict[int, int] = {}
+    for node_id, parent_indices in parents.items():
+        if len(parent_indices) != 1:
+            raise ModelImportError(
+                f"model {graph.name} node {node_id} has {len(parent_indices)} parents"
+            )
+        parent_index = parent_indices[0]
+        if parent_index == wrapper_index:
+            native_parents[node_id] = -1
+        elif parent_index in by_gltf_index:
+            native_parents[node_id] = by_gltf_index[parent_index]
+        else:
+            raise ModelImportError(
+                f"model {graph.name} node {node_id} has a parent outside its model"
+            )
+    for node_id in native_parents:
+        visited = set()
+        cursor = node_id
+        while cursor >= 0:
+            if cursor in visited:
+                raise ModelImportError(f"model {graph.name} hierarchy contains a cycle")
+            visited.add(cursor)
+            cursor = native_parents[cursor]
+
+    counts = {
+        "nodes": len(graph.items) + int(bool(graph.root_transform)),
+        "changed_nodes": 0,
+        "translations": 0,
+        "rotations": 0,
+        "scales": 0,
+        "parents": 0,
+    }
+
+    def patch_trs(
+        node: dict,
+        position_offset: int,
+        rotation_offset: int,
+        scale_offset: int,
+        old_position: tuple[float, ...],
+        old_rotation: tuple[float, ...],
+        old_scale: tuple[float, ...],
+        context: str,
+        *,
+        euler_rotation: bool,
+    ) -> bool:
+        changed = False
+        translation = (
+            None
+            if "translation" not in node
+            and not all(math.isfinite(value) for value in old_position[:3])
+            else _node_vector(node, "translation", 3, (0.0, 0.0, 0.0), context)
+        )
+        expected_translation = tuple(
+            value * meters_per_unit for value in old_position[:3]
+        )
+        if translation is not None and translation != expected_translation:
+            native = tuple(_f32(value / meters_per_unit) for value in translation)
+            _write_floats(output, position_offset, native, context + " translation")
+            counts["translations"] += 1
+            changed = True
+
+        expected_rotation = (
+            fld_model._euler_quaternion(*old_rotation)
+            if euler_rotation
+            else fld_model._normalized_quaternion(old_rotation)
+        )
+        rotation = (
+            None
+            if "rotation" not in node
+            and not all(math.isfinite(value) for value in old_rotation)
+            else _node_vector(node, "rotation", 4, (0.0, 0.0, 0.0, 1.0), context)
+        )
+        if rotation is not None and not _same_rotation(rotation, expected_rotation):
+            length = math.sqrt(sum(value * value for value in rotation))
+            if not math.isfinite(length) or length == 0.0:
+                raise ModelImportError(f"{context} rotation is not a finite quaternion")
+            normalized = tuple(value / length for value in rotation)
+            native_rotation = (
+                _quaternion_euler(normalized, context + " rotation")
+                if euler_rotation
+                else tuple(_f32(value) for value in normalized)
+            )
+            _write_floats(
+                output, rotation_offset, native_rotation, context + " rotation"
+            )
+            counts["rotations"] += 1
+            changed = True
+
+        scale = (
+            None
+            if "scale" not in node
+            and not all(math.isfinite(value) for value in old_scale[:3])
+            else _node_vector(node, "scale", 3, (1.0, 1.0, 1.0), context)
+        )
+        if scale is not None and scale != old_scale[:3]:
+            native_scale = tuple(_f32(value) for value in scale)
+            _write_floats(output, scale_offset, native_scale, context + " scale")
+            counts["scales"] += 1
+            changed = True
+        return changed
+
+    for item in graph.items:
+        context = f"model {graph.name} node {item.node_id}"
+        changed = patch_trs(
+            item_nodes[item.node_id],
+            item.offset + 0x20,
+            item.offset + 0x10,
+            item.offset + 0x30,
+            item.position,
+            item.rotation,
+            item.scale,
+            context,
+            euler_rotation=True,
+        )
+        parent = native_parents[item.node_id]
+        if parent != item.parent:
+            struct.pack_into("<i", output, item.offset + 0x0C, parent)
+            counts["parents"] += 1
+            changed = True
+        counts["changed_nodes"] += changed
+
+    if graph.root_transform:
+        native = struct.unpack_from("<12f", source_data, graph.root_transform)
+        if patch_trs(
+            wrapper,
+            graph.root_transform,
+            graph.root_transform + 0x10,
+            graph.root_transform + 0x20,
+            native[:4],
+            native[4:8],
+            native[8:12],
+            f"model {graph.name} resource",
+            euler_rotation=False,
+        ):
+            counts["changed_nodes"] += 1
+
+    return item_nodes, counts
+
+
 def import_model_graphs(
     source_data: bytes,
     document: dict,
     binary: bytes,
     graphs: tuple[ModelGraph, ...],
 ) -> tuple[bytes, ImportSummary]:
-    """Apply changed material and vertex data without rebuilding SDF packets."""
+    """Apply changed model nodes, materials, and vertex data in place."""
 
     meters_per_unit, texture_count = _asset_metadata(document)
     meshes = document.get("meshes")
@@ -80,15 +351,37 @@ def import_model_graphs(
         raise ModelImportError("selected SDF model graphs repeat a name")
     selected_prefixes = tuple(f"{name}/node_" for name in graph_names)
 
+    graph_nodes: dict[str, dict[int, dict]] = {}
+    node_changes = {
+        name: 0
+        for name in (
+            "nodes",
+            "changed_nodes",
+            "translations",
+            "rotations",
+            "scales",
+            "parents",
+        )
+    }
+    output = bytearray(source_data)
+    for graph in graphs:
+        item_nodes, counts = _patch_graph_nodes(
+            source_data, output, document, graph, meters_per_unit
+        )
+        graph_nodes[graph.name] = item_nodes
+        for name, count in counts.items():
+            node_changes[name] += count
+
     meshes_by_name: dict[str, dict] = {}
-    for mesh in meshes:
+    mesh_indices_by_name: dict[str, int] = {}
+    for mesh_index, mesh in enumerate(meshes):
         name = mesh.get("name") if isinstance(mesh, dict) else None
         if isinstance(name, str) and name.startswith(selected_prefixes):
             if name in meshes_by_name:
                 raise ModelImportError(f"GLB repeats mesh name {name!r}")
             meshes_by_name[name] = mesh
+            mesh_indices_by_name[name] = mesh_index
 
-    output = bytearray(source_data)
     gltf_materials = document.get("materials")
     if not isinstance(gltf_materials, list):
         raise ModelImportError("GLB has no material array")
@@ -247,6 +540,7 @@ def import_model_graphs(
     stream_values: dict[tuple[int, str], tuple[tuple[int | float, ...], ...]] = {}
     mesh_keys: set[tuple[int, int, int]] = set()
     changed_meshes: set[tuple[int, int, int]] = set()
+    changed_position_streams: set[int] = set()
     changes = {
         name: 0
         for name in ("positions", "normals", "texcoords", "attributes", "colors")
@@ -341,6 +635,11 @@ def import_model_graphs(
                 gltf_mesh = meshes_by_name[mesh_name]
             except KeyError as exc:
                 raise ModelImportError(f"GLB is missing mesh {mesh_name!r}") from exc
+            node_mesh = graph_nodes[graph.name][item.node_id].get("mesh")
+            if node_mesh != mesh_indices_by_name[mesh_name]:
+                raise ModelImportError(
+                    f"model node {mesh_name!r} changes its mesh assignment"
+                )
             consumed_mesh_names.add(mesh_name)
             primitives = gltf_mesh.get("primitives")
             if not isinstance(primitives, list):
@@ -543,11 +842,65 @@ def import_model_graphs(
                     if changed:
                         changes[label] += 1
                         mesh_changed = True
+                        if attribute_name == "POSITION":
+                            changed_position_streams.add(native_offset)
                 if mesh_changed:
                     changed_meshes.add(mesh_key)
     extra_meshes = set(meshes_by_name) - consumed_mesh_names
     if extra_meshes:
         raise ModelImportError("GLB contains an unrecognized selected-model mesh")
+
+    changed_bounds: set[int] = set()
+    for graph in graphs:
+        for item in graph.items:
+            if not item.bounds or not item.commands:
+                continue
+            edited_positions = []
+            for list_offset in graph.draw_roots[item.commands]:
+                draw_list = graph.draw_lists[list_offset]
+                for draw_offset in draw_list.draws:
+                    draw = graph.draws[draw_offset]
+                    packet_meshes, _ = fld._read_model_mesh_packet(
+                        output,
+                        draw.packet,
+                        draw.quadwords * 0x10,
+                        f"model {graph.name} edited packet",
+                    )
+                    edited_positions.extend(
+                        position
+                        for mesh in packet_meshes
+                        if mesh.positions_offset in changed_position_streams
+                        for position in mesh.positions
+                    )
+            if not edited_positions:
+                continue
+            bounds = struct.unpack_from("<6f", output, item.bounds)
+            if not all(math.isfinite(value) for value in bounds):
+                raise ModelImportError(
+                    f"model {graph.name} node {item.node_id} has non-finite bounds"
+                )
+            expanded = tuple(
+                min(
+                    bounds[axis],
+                    *(position[axis] for position in edited_positions),
+                )
+                for axis in range(3)
+            ) + tuple(
+                max(
+                    bounds[axis + 3],
+                    *(position[axis] for position in edited_positions),
+                )
+                for axis in range(3)
+            )
+            if expanded != bounds:
+                _write_floats(
+                    output,
+                    item.bounds,
+                    expanded,
+                    f"model {graph.name} node {item.node_id} bounds",
+                )
+                changed_bounds.add(item.bounds)
+
     rebuilt = bytes(output)
     return rebuilt, ImportSummary(
         len(graphs),
@@ -560,4 +913,11 @@ def import_model_graphs(
         changes["colors"],
         material_count,
         len(changed_materials),
+        node_changes["nodes"],
+        node_changes["changed_nodes"],
+        node_changes["translations"],
+        node_changes["rotations"],
+        node_changes["scales"],
+        node_changes["parents"],
+        len(changed_bounds),
     )

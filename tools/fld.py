@@ -225,6 +225,7 @@ class ModelResource:
 
 @dataclass(frozen=True)
 class ModelItem:
+    offset: int
     command_mode: int
     reserved_02: int
     word_04: int
@@ -571,6 +572,7 @@ def _read_model_items(
             _range(data, command_0, 4, context + f" model item {index} commands")
         items.append(
             ModelItem(
+                item_offset,
                 command_mode,
                 reserved_02,
                 word_04,

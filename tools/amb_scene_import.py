@@ -113,7 +113,10 @@ def main() -> None:
         f"and {summary.changed_meshes} meshes "
         f"({summary.positions} position, {summary.normals} normal, "
         f"{summary.texcoords} texcoord, {summary.attributes} attribute, "
-        f"{summary.colors} color streams)"
+        f"{summary.colors} color streams); changed {summary.changed_nodes} "
+        f"model nodes ({summary.translations} translations, "
+        f"{summary.rotations} rotations, {summary.scales} scales, "
+        f"{summary.parents} parents) and expanded {summary.bounds} bounds"
     )
 
 

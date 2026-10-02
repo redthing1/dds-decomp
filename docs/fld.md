@@ -308,10 +308,10 @@ Across the archived field corpus, every one of the 150,694 primary and 3,948
 secondary material texture references resolves inside its paired TBN bundle.
 This covers 3,656 DDS1 and 3,415 DDS2 model resources.
 
-### Model geometry and material import
+### Model editing
 
-`tools/fld_model_import.py` applies edited material parameters and vertex
-streams from an exported GLB back to an FLD1 binary or source file:
+`tools/fld_model_import.py` applies edited model nodes, material parameters,
+and vertex streams from an exported GLB back to an FLD1 binary or source file:
 
 ```sh
 python3 tools/fld_model_import.py edited-model.glb \
@@ -330,6 +330,18 @@ converted from glTF's normalized 0..255 representation to the DDS 0..128
 range. Components that still equal the exported values retain their original
 float bits.
 
+Model-item translation, rotation, scale, and parent edits also return to their
+fixed native records. The importer converts glTF quaternions back to the DDS
+Euler convention for model items; the model resource's own quaternion remains
+a quaternion. Reparenting must leave every model node under exactly one node or
+its model wrapper and must not introduce a cycle. Unrepresented fourth
+position and scale components remain byte-exact.
+
+When an edited position stream extends beyond a model item's local clipping
+box, the importer expands that box along the affected axes. Existing padding
+and unchanged bounds remain intact, so moving geometry inward does not rewrite
+author-chosen bounds or introduce unrelated diffs.
+
 The edit path deliberately preserves the FLD1 structure that glTF does not
 describe. Triangle indices and control bytes, material and draw identities,
 mesh ordering, vertex-channel layout, packet sizes, VIF commands, VU program
@@ -338,10 +350,9 @@ streams must also have one consistent edit. The importer rejects a GLB that
 changes any of these properties instead of rebuilding a different packet
 program implicitly.
 
-Node transforms, motion, and model bounds remain authoritative in FLD1 source;
-use the source directives to edit them. Bounds should be updated there when a
-geometry edit extends beyond the existing local box. The same packet-preserving
-engine handles standalone automap models through `tools/amb_scene_import.py`.
+Motion tracks remain authoritative in FLD1 source. The same hierarchy,
+transform, bounds, material, and packet-preserving engine handles standalone
+automap models through `tools/amb_scene_import.py`.
 
 ### Composed field export
 

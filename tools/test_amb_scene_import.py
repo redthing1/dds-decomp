@@ -53,7 +53,9 @@ class AmbSceneImportTests(unittest.TestCase):
         self.assertEqual(rebuilt, self.data)
         self.assertEqual(
             summary,
-            sdf_model_import.ImportSummary(1, 1, 0, 0, 0, 0, 0, 0, 1, 0),
+            sdf_model_import.ImportSummary(
+                1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0
+            ),
         )
 
     def test_imports_position_without_changing_packet_shape(self) -> None:
@@ -70,7 +72,9 @@ class AmbSceneImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            sdf_model_import.ImportSummary(1, 1, 1, 1, 0, 0, 0, 0, 1, 0),
+            sdf_model_import.ImportSummary(
+                1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1
+            ),
         )
         self.assertEqual(first_mesh(rebuilt).positions[0][0], 125.0)
         self.assertEqual(first_mesh(rebuilt).triangles, first_mesh(self.data).triangles)

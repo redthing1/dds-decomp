@@ -47,6 +47,13 @@ ATTRIBUTE_SOURCE = (
     )
 )
 
+HIERARCHY_SOURCE = SOURCE.replace("model_items count=1", "model_items count=2").replace(
+    "label bounds",
+    "model_item node_id=1 parent=0 rotation=0,0,0 position=0,0,0,1 "
+    "scale=1,1,1,0 bounds=null commands=null\n"
+    "label bounds",
+)
+
 
 def accessor_offset(document: dict, accessor_index: int) -> int:
     accessor = document["accessors"][accessor_index]
@@ -101,7 +108,9 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(rebuilt, self.data)
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 0, 0, 0, 0, 0, 0, 1, 0),
+            fld_model_import.ImportSummary(
+                1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0
+            ),
         )
 
     def test_imports_vertex_attributes_without_changing_packet_shape(self) -> None:
@@ -133,7 +142,9 @@ class FldModelImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 1, 1, 1, 1, 0, 1, 1, 0),
+            fld_model_import.ImportSummary(
+                1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 2, 0, 0, 0, 0, 0, 1
+            ),
         )
         mesh = first_mesh(rebuilt)
         self.assertEqual(mesh.positions[0][0], 125.0)
@@ -142,6 +153,19 @@ class FldModelImportTests(unittest.TestCase):
         self.assertEqual(mesh.colors[0][0], 64)
         self.assertEqual(mesh.triangles, first_mesh(self.data).triangles)
         self.assertEqual(mesh.controls, first_mesh(self.data).controls)
+        words, data_end, _ = fld._read_header(rebuilt)
+        resource = next(
+            resource
+            for resource in fld._read_resources(
+                rebuilt, fld._read_types(rebuilt, words, data_end)
+            )
+            if resource.type_id == 2
+        )
+        _, items = fld._read_model_resource(rebuilt, resource.data, data_end, "test")
+        self.assertEqual(
+            struct.unpack_from("<6f", rebuilt, items[0].bounds),
+            (0.0, 0.0, 0.0, 125.0, 100.0, 0.0),
+        )
         self.assertEqual(len(rebuilt), len(self.data))
         fld.parse_source(fld.render_source(rebuilt))
 
@@ -159,9 +183,93 @@ class FldModelImportTests(unittest.TestCase):
         )
         self.assertEqual(
             summary,
-            fld_model_import.ImportSummary(1, 1, 1, 0, 0, 0, 1, 0, 1, 0),
+            fld_model_import.ImportSummary(
+                1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0
+            ),
         )
         self.assertEqual(first_mesh(rebuilt).attributes[0][0], 2.5)
+
+    def test_imports_model_item_and_resource_transforms(self) -> None:
+        item_node = next(
+            node
+            for node in self.document["nodes"]
+            if node["name"] == "test_model/node_0"
+        )
+        wrapper = next(
+            node for node in self.document["nodes"] if node["name"] == "test_model"
+        )
+        item_rotation = fld_model._euler_quaternion(0.25, -0.5, 0.75)
+        half = 2**-0.5
+        item_node["translation"] = [4.0, 5.0, 6.0]
+        item_node["rotation"] = item_rotation
+        item_node["scale"] = [2.0, 3.0, 4.0]
+        wrapper["translation"] = [7.0, 8.0, 9.0]
+        wrapper["rotation"] = [0.0, 0.0, half, half]
+
+        rebuilt, summary = fld_model_import.import_geometry(
+            self.data, self.document, bytes(self.binary)
+        )
+        self.assertEqual(summary.changed_nodes, 2)
+        self.assertEqual(summary.translations, 2)
+        self.assertEqual(summary.rotations, 2)
+        self.assertEqual(summary.scales, 1)
+        words, data_end, _ = fld._read_header(rebuilt)
+        resource = next(
+            resource
+            for resource in fld._read_resources(
+                rebuilt, fld._read_types(rebuilt, words, data_end)
+            )
+            if resource.type_id == 2
+        )
+        _, items = fld._read_model_resource(rebuilt, resource.data, data_end, "test")
+        self.assertEqual(items[0].position, (400.0, 500.0, 600.0, 1.0))
+        for actual, expected in zip(
+            items[0].rotation, (0.25, -0.5, 0.75), strict=True
+        ):
+            self.assertAlmostEqual(actual, expected, places=6)
+        self.assertEqual(items[0].scale, (2.0, 3.0, 4.0, 0.0))
+        native = struct.unpack_from("<12f", rebuilt, resource.transform)
+        self.assertEqual(native[:4], (700.0, 800.0, 900.0, 1.0))
+        for actual, expected in zip(native[4:8], (0.0, 0.0, half, half), strict=True):
+            self.assertAlmostEqual(actual, expected, places=6)
+        self.assertEqual(len(rebuilt), len(self.data))
+        self.assertEqual(
+            fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
+        )
+
+    def test_imports_model_hierarchy_changes(self) -> None:
+        data = fld.encode(fld.parse_source(HIERARCHY_SOURCE))
+        document, binary = fld_model.build_gltf(data)
+        by_name = {node["name"]: node for node in document["nodes"]}
+        first = by_name["test_model/node_0"]
+        second_index = document["nodes"].index(by_name["test_model/node_1"])
+        wrapper = by_name["test_model"]
+        first["children"].remove(second_index)
+        wrapper["children"] = [*wrapper["children"], second_index]
+
+        rebuilt, summary = fld_model_import.import_geometry(data, document, binary)
+        self.assertEqual(summary.changed_nodes, 1)
+        self.assertEqual(summary.parents, 1)
+        words, data_end, _ = fld._read_header(rebuilt)
+        resource = next(
+            resource
+            for resource in fld._read_resources(
+                rebuilt, fld._read_types(rebuilt, words, data_end)
+            )
+            if resource.type_id == 2
+        )
+        _, items = fld._read_model_resource(rebuilt, resource.data, data_end, "test")
+        self.assertEqual([item.parent for item in items], [-1, -1])
+
+        first_index = document["nodes"].index(first)
+        wrapper["children"].remove(first_index)
+        wrapper["children"].remove(second_index)
+        by_name["test_model/node_1"]["children"] = [first_index]
+        first["children"] = [second_index]
+        with self.assertRaisesRegex(
+            fld_model_import.ModelImportError, "hierarchy contains a cycle"
+        ):
+            fld_model_import.import_geometry(data, document, binary)
 
     def test_imports_semantic_material_fields(self) -> None:
         gltf_material = self.document["materials"][self.primitive["material"]]
