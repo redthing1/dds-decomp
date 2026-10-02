@@ -106,6 +106,66 @@ end_data
 """
 
 
+GAMEPLAY_SOURCE = """\
+fld2 1
+header version=23 magic=FLD2 type_count=3 type_table=@types word_1c=0 word_20=0 word_24=0 word_28=0 word_2c=0 word_30=0 word_34=0 word_38=0 word_3c=0
+label types
+type id=4 count=1 resources=@camera_resources
+type id=6 count=2 resources=@event_resources
+type id=10 count=3 resources=@placement_resources
+label camera_resources
+resource serial=1 flags=0 type=4 name=@camera_name reserved=0 transform=@camera_transform area=null link=null sblock=null data=@camera
+label event_resources
+resource serial=2 flags=0 type=6 name=@event_name_0 reserved=0 transform=null area=null link=null sblock=null data=@event_0
+resource serial=3 flags=0 type=6 name=@event_name_1 reserved=0 transform=null area=null link=null sblock=null data=@event_1
+label placement_resources
+resource serial=4 flags=0 type=10 name=@placement_name_0 reserved=0 transform=@placement_transform_0 area=null link=null sblock=null data=@placement_0
+resource serial=5 flags=0 type=10 name=@placement_name_1 reserved=0 transform=@placement_transform_1 area=null link=null sblock=null data=@placement_1
+resource serial=6 flags=0 type=10 name=@special_name reserved=0 transform=@special_transform area=null link=null sblock=null data=@special_placement
+label camera_name
+string16 01cam_01
+label event_name_0
+string16 01event_01
+label event_name_1
+string16 01event_02
+label placement_name_0
+string16 01actor_01
+label placement_name_1
+string16 01actor_02
+label special_name
+string16 01save_01
+label camera_transform
+transform position=0,0,0,1 rotation=0,0,0,1 scale=1,1,1,1
+label placement_transform_0
+transform position=100,0,0,1 rotation=0,0,0,1 scale=1,1,1,1
+label placement_transform_1
+transform position=200,0,0,1 rotation=0,0,0,1 scale=1,1,1,1
+label special_transform
+transform position=300,0,0,1 rotation=0,0,0,1 scale=1,1,1,1
+label camera
+camera fovy=0.7853981852531433
+label event_0
+event flags=1 label=@procedure_0 reserved=2,3
+label event_1
+event flags=4 label=@procedure_1 reserved=5,6
+label procedure_0
+cstring "001_01eve_01"
+label procedure_1
+cstring "001_01eve_02"
+align 4
+label placement_0
+placement kind=1 event=0 visible=0 payload=null
+label placement_1
+placement kind=2 event=1 visible=0 payload=null
+label special_placement
+placement kind=8 event=-1 visible=0 payload=@special_point
+label special_point
+special_point kind=save id=7
+label data_end
+end_data
+"""
+
+
 class FldSceneTests(unittest.TestCase):
     def test_appends_collision_camera_and_placement(self) -> None:
         builder = fld_model.GltfBuilder.create()
@@ -124,7 +184,9 @@ class FldSceneTests(unittest.TestCase):
                 "ddsCollisionResources": 1,
                 "ddsCameraResources": 1,
                 "ddsMotionResources": 0,
+                "ddsEventResources": 0,
                 "ddsPlacementResources": 1,
+                "ddsEvents": [],
             },
         )
         children = [document["nodes"][index] for index in wrapper["children"]]
@@ -132,7 +194,13 @@ class FldSceneTests(unittest.TestCase):
         self.assertEqual(children[1]["extras"]["ddsCameraYFov"], 0.7853981852531433)
         self.assertEqual(children[2]["translation"], [1.0, 2.0, 3.0])
         self.assertEqual(
-            children[2]["extras"]["ddsSpecialPoint"], {"kind": "heal", "id": 3}
+            children[2]["extras"]["ddsPlacement"],
+            {
+                "kindId": 8,
+                "event": None,
+                "visible": 1,
+                "specialPoint": {"kind": "heal", "id": 3},
+            },
         )
 
         collision = document["meshes"][children[0]["mesh"]]
@@ -163,6 +231,48 @@ class FldSceneTests(unittest.TestCase):
             ],
         )
         self.assertIn("KHR_materials_unlit", document["extensionsUsed"])
+        fld_model.encode_glb(document, binary)
+
+    def test_exports_event_table_and_typed_placements(self) -> None:
+        builder = fld_model.GltfBuilder.create()
+        document, binary = fld_scene.append_field_scene(
+            builder.document,
+            bytes(builder.binary),
+            fld.encode(fld.parse_source(GAMEPLAY_SOURCE)),
+            meters_per_unit=0.01,
+            placement_marker_size=0.0,
+        )
+
+        wrapper = document["nodes"][-1]
+        self.assertEqual(wrapper["extras"]["ddsEventResources"], 2)
+        self.assertEqual(
+            wrapper["extras"]["ddsEvents"],
+            [
+                {
+                    "index": 0,
+                    "resource": "01event_01",
+                    "procedure": "001_01eve_01",
+                    "flags": 1,
+                    "reserved": [2, 3],
+                },
+                {
+                    "index": 1,
+                    "resource": "01event_02",
+                    "procedure": "001_01eve_02",
+                    "flags": 4,
+                    "reserved": [5, 6],
+                },
+            ],
+        )
+        nodes = {node["name"]: node for node in document["nodes"]}
+        self.assertEqual(
+            nodes["01actor_01"]["extras"]["ddsPlacement"],
+            {"kindId": 1, "event": 0, "visible": 0, "specialPoint": None},
+        )
+        self.assertEqual(
+            nodes["01save_01"]["extras"]["ddsPlacement"]["specialPoint"],
+            {"kind": "save", "id": 7},
+        )
         fld_model.encode_glb(document, binary)
 
     def test_exports_path_motion_as_animation_and_typed_metadata(self) -> None:

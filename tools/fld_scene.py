@@ -105,6 +105,38 @@ def _collision_face_metadata(
     }
 
 
+def _event_metadata(
+    data: bytes,
+    data_end: int,
+    resource: fld.Resource,
+    event_index: int,
+) -> dict:
+    name = _resource_name(data, resource)
+    if not resource.data:
+        return {
+            "index": event_index,
+            "resource": name,
+            "procedure": None,
+            "flags": None,
+            "reserved": None,
+        }
+    flags, procedure_pointer, reserved_0, reserved_1 = struct.unpack_from(
+        "<IIII", data, resource.data
+    )
+    procedure = None
+    if procedure_pointer:
+        procedure, _ = fld._cstring(
+            data, procedure_pointer, data_end, f"event {name} procedure"
+        )
+    return {
+        "index": event_index,
+        "resource": name,
+        "procedure": procedure,
+        "flags": flags,
+        "reserved": [reserved_0, reserved_1],
+    }
+
+
 def _add_collision_mesh(
     builder: fld_model.GltfBuilder,
     data: bytes,
@@ -349,6 +381,11 @@ def append_field_scene(
     resources = fld._read_resources(
         field_data, fld._read_types(field_data, words, data_end)
     )
+    event_resources = [resource for resource in resources if resource.type_id == 6]
+    events = [
+        _event_metadata(field_data, data_end, resource, event_index)
+        for event_index, resource in enumerate(event_resources)
+    ]
     builder = fld_model.GltfBuilder(document, bytearray(binary))
     scene_children = []
     collision_material = None
@@ -411,18 +448,17 @@ def append_field_scene(
             kind, event_index, visible, payload = struct.unpack_from(
                 "<IiII", field_data, resource.data
             )
-            node["extras"].update(
-                {
-                    "ddsPlacementKind": kind,
-                    "ddsEventIndex": event_index,
-                    "ddsVisible": visible,
-                }
-            )
+            node["extras"]["ddsPlacement"] = {
+                "kindId": kind,
+                "event": event_index if event_index >= 0 else None,
+                "visible": visible,
+                "specialPoint": None,
+            }
             if kind == 8 and payload:
                 special_kind, point_id = fld._read_special_point(
                     field_data, payload, f"placement {name}"
                 )
-                node["extras"]["ddsSpecialPoint"] = {
+                node["extras"]["ddsPlacement"]["specialPoint"] = {
                     "kind": fld.SPECIAL_POINT_KINDS[special_kind],
                     "id": point_id,
                 }
@@ -466,7 +502,9 @@ def append_field_scene(
             "ddsCollisionResources": counts["collision"],
             "ddsCameraResources": counts["camera"],
             "ddsMotionResources": counts["motion"],
+            "ddsEventResources": len(events),
             "ddsPlacementResources": counts["placement"],
+            "ddsEvents": events,
         },
     }
     if transitions is not None:

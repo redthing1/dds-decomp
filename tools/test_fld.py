@@ -139,7 +139,7 @@ end_data
             field_world.EncounterLinkSummary(1, 1, 1, 1, 2),
         )
 
-    def test_invalid_event_placement_is_rejected(self) -> None:
+    def test_invalid_placement_event_reference_is_rejected(self) -> None:
         source = """\
 fld2 1
 header version=23 magic=FLD2 type_count=1 type_table=@resource_types word_1c=0 word_20=0 word_24=0 word_28=0 word_2c=0 word_30=0 word_34=0 word_38=0 word_3c=0
@@ -150,7 +150,7 @@ resource serial=0 flags=0 type=10 name=@name reserved=0 transform=null area=null
 label name
 string16 point
 label put
-placement kind=1 event=3 visible=0 payload=@payload
+placement kind=2 event=3 visible=0 payload=@payload
 label payload
 u32 0 0 0 0
 label data_end

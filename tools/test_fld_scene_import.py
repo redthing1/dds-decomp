@@ -14,7 +14,7 @@ import fld  # noqa: E402
 import fld_model  # noqa: E402
 import fld_scene  # noqa: E402
 import fld_scene_import  # noqa: E402
-from test_fld_scene import MOTION_SOURCE, SOURCE  # noqa: E402
+from test_fld_scene import GAMEPLAY_SOURCE, MOTION_SOURCE, SOURCE  # noqa: E402
 
 
 class FieldSceneImportTests(unittest.TestCase):
@@ -45,6 +45,22 @@ class FieldSceneImportTests(unittest.TestCase):
         view = document["bufferViews"][accessor["bufferView"]]
         return view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
 
+    def gameplay_scene(self) -> tuple[bytes, dict, bytes]:
+        source = fld.encode(fld.parse_source(GAMEPLAY_SOURCE))
+        builder = fld_model.GltfBuilder.create()
+        document, binary = fld_scene.append_field_scene(
+            builder.document,
+            bytes(builder.binary),
+            source,
+            meters_per_unit=0.01,
+            placement_marker_size=0.0,
+        )
+        document["asset"]["extras"] = {
+            "ddsMetersPerUnit": 0.01,
+            "ddsNativeAxesPreserved": True,
+        }
+        return source, document, binary
+
     def test_unchanged_glb_preserves_every_field_byte(self) -> None:
         glb = fld_model.encode_glb(self.document, bytes(self.binary))
         decoded, binary = fld_scene_import.decode_glb(glb)
@@ -55,7 +71,17 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_scene_import.ImportSummary(
-                3, 0, 0, 0, 0, 1, 0, 0, collision_faces=1
+                3,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                collision_faces=1,
+                cameras=1,
+                placements=1,
             ),
         )
 
@@ -72,7 +98,17 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_scene_import.ImportSummary(
-                3, 3, 1, 1, 1, 1, 0, 0, collision_faces=1
+                3,
+                3,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                collision_faces=1,
+                cameras=1,
+                placements=1,
             ),
         )
         words, data_end, _ = fld._read_header(rebuilt)
@@ -104,7 +140,17 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(
             summary,
             fld_scene_import.ImportSummary(
-                3, 1, 0, 0, 0, 1, 1, 1, collision_faces=1
+                3,
+                1,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                collision_faces=1,
+                cameras=1,
+                placements=1,
             ),
         )
         words, data_end, _ = fld._read_header(rebuilt)
@@ -167,6 +213,8 @@ class FieldSceneImportTests(unittest.TestCase):
                 0,
                 collision_faces=1,
                 changed_collision_faces=1,
+                cameras=1,
+                placements=1,
             ),
         )
         words, data_end, _ = fld._read_header(rebuilt)
@@ -262,6 +310,96 @@ class FieldSceneImportTests(unittest.TestCase):
         self.assertEqual(
             fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
         )
+
+    def test_imports_camera_events_placements_and_special_points(self) -> None:
+        source, document, binary = self.gameplay_scene()
+        nodes = {node["name"]: node for node in document["nodes"]}
+        nodes["01cam_01"]["extras"]["ddsCameraYFov"] = 1.0
+        events = nodes["FLD2 field data"]["extras"]["ddsEvents"]
+        events[0]["flags"] = 9
+        events[0]["reserved"] = [10, 11]
+        nodes["01actor_01"]["extras"]["ddsPlacement"].update(
+            {"event": 1, "visible": 2}
+        )
+        nodes["01actor_02"]["extras"]["ddsPlacement"]["event"] = 0
+        nodes["01save_01"]["extras"]["ddsPlacement"]["specialPoint"] = {
+            "kind": "heal",
+            "id": 9,
+        }
+
+        rebuilt, summary = fld_scene_import.import_scene(source, document, binary)
+
+        self.assertEqual(
+            summary,
+            fld_scene_import.ImportSummary(
+                6,
+                5,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                cameras=1,
+                changed_cameras=1,
+                placements=3,
+                changed_placements=3,
+                events=2,
+                changed_events=1,
+            ),
+        )
+        words, data_end, _ = fld._read_header(rebuilt)
+        resources = fld._read_resources(
+            rebuilt, fld._read_types(rebuilt, words, data_end)
+        )
+        by_name = {
+            fld._fixed_string(rebuilt, resource.name, "name"): resource
+            for resource in resources
+        }
+        self.assertEqual(
+            struct.unpack_from("<f", rebuilt, by_name["01cam_01"].data)[0], 1.0
+        )
+        self.assertEqual(
+            struct.unpack_from("<IIII", rebuilt, by_name["01event_01"].data),
+            (
+                9,
+                struct.unpack_from("<I", source, by_name["01event_01"].data + 4)[0],
+                10,
+                11,
+            ),
+        )
+        self.assertEqual(
+            struct.unpack_from("<IiI", rebuilt, by_name["01actor_01"].data)[:3],
+            (1, 1, 2),
+        )
+        self.assertEqual(
+            struct.unpack_from("<i", rebuilt, by_name["01actor_02"].data + 4)[0],
+            0,
+        )
+        special_pointer = struct.unpack_from(
+            "<I", rebuilt, by_name["01save_01"].data + 12
+        )[0]
+        self.assertEqual(struct.unpack_from("<II", rebuilt, special_pointer), (2, 9))
+        self.assertEqual(
+            fld.encode(fld.parse_source(fld.render_source(rebuilt))), rebuilt
+        )
+
+    def test_locks_event_identity_and_assignment_set(self) -> None:
+        source, document, binary = self.gameplay_scene()
+        nodes = {node["name"]: node for node in document["nodes"]}
+        events = nodes["FLD2 field data"]["extras"]["ddsEvents"]
+        events[0]["procedure"] = "other_procedure"
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "changes its identity"
+        ):
+            fld_scene_import.import_scene(source, document, binary)
+
+        events[0]["procedure"] = "001_01eve_01"
+        nodes["01actor_01"]["extras"]["ddsPlacement"]["event"] = 1
+        with self.assertRaisesRegex(
+            fld_scene_import.FieldSceneImportError, "event assignment set"
+        ):
+            fld_scene_import.import_scene(source, document, binary)
 
     def test_path_motion_locks_frame_keys_and_track_identity(self) -> None:
         source = fld.encode(fld.parse_source(MOTION_SOURCE))

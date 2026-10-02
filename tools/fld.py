@@ -1147,9 +1147,9 @@ def validate(data: bytes) -> None:
             kind, event_index = struct.unpack_from("<Ii", data, resource.data)
             if kind > 8:
                 raise FldError(f"placement at 0x{resource.data:x} has kind {kind}")
-            if kind == 1 and event_index >= 0 and event_index >= event_count:
+            if event_index >= 0 and event_index >= event_count:
                 raise FldError(
-                    f"event placement at 0x{resource.data:x} references event {event_index}, "
+                    f"placement at 0x{resource.data:x} references event {event_index}, "
                     f"but the file has {event_count} event resources"
                 )
             if kind == 8:

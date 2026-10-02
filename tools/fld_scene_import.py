@@ -39,6 +39,12 @@ class ImportSummary:
     changed_motion_tracks: int = 0
     collision_faces: int = 0
     changed_collision_faces: int = 0
+    cameras: int = 0
+    changed_cameras: int = 0
+    placements: int = 0
+    changed_placements: int = 0
+    events: int = 0
+    changed_events: int = 0
 
 
 def _resource_name(data: bytes, resource: fld.Resource) -> str:
@@ -103,6 +109,81 @@ def _metadata_integer(
             f"{context} must be an integer in {minimum}..{maximum}"
         )
     return value
+
+
+def _field_wrapper(nodes: list) -> dict:
+    wrappers = [
+        node
+        for node in nodes
+        if isinstance(node, dict)
+        and node.get("name") == "FLD2 field data"
+        and isinstance(node.get("extras"), dict)
+    ]
+    if len(wrappers) != 1:
+        raise FieldSceneImportError(
+            f"GLB has {len(wrappers)} FLD2 field-data wrappers, expected one"
+        )
+    return wrappers[0]
+
+
+def _import_events(
+    field_data: bytes,
+    output: bytearray,
+    data_end: int,
+    resources: list[fld.Resource],
+    wrapper: dict,
+) -> tuple[int, int]:
+    event_resources = [resource for resource in resources if resource.type_id == 6]
+    extras = wrapper["extras"]
+    if extras.get("ddsEventResources") != len(event_resources):
+        raise FieldSceneImportError("FLD2 event resource count differs")
+    rows = extras.get("ddsEvents")
+    if not isinstance(rows, list) or len(rows) != len(event_resources):
+        raise FieldSceneImportError("FLD2 event table changes its row count")
+
+    allowed = {"index", "resource", "procedure", "flags", "reserved"}
+    changed = 0
+    for event_index, (resource, actual) in enumerate(
+        zip(event_resources, rows, strict=True)
+    ):
+        expected = fld_scene._event_metadata(
+            field_data, data_end, resource, event_index
+        )
+        context = f"event {event_index} ({expected['resource']!r})"
+        if (
+            not isinstance(actual, dict)
+            or set(actual) != allowed
+            or actual.get("index") != expected["index"]
+            or actual.get("resource") != expected["resource"]
+            or actual.get("procedure") != expected["procedure"]
+        ):
+            raise FieldSceneImportError(f"{context} changes its identity")
+        if not resource.data:
+            if actual != expected:
+                raise FieldSceneImportError(
+                    f"{context} exposes data absent from the FLD2"
+                )
+            continue
+        flags = _metadata_integer(
+            actual.get("flags"), 0, 0xFFFFFFFF, context + " flags"
+        )
+        reserved = actual.get("reserved")
+        if not isinstance(reserved, list) or len(reserved) != 2:
+            raise FieldSceneImportError(f"{context} has invalid reserved words")
+        reserved_words = tuple(
+            _metadata_integer(value, 0, 0xFFFFFFFF, context + " reserved word")
+            for value in reserved
+        )
+        rebuilt = struct.pack(
+            "<IIII",
+            flags,
+            struct.unpack_from("<I", field_data, resource.data + 4)[0],
+            *reserved_words,
+        )
+        if rebuilt != bytes(output[resource.data : resource.data + 0x10]):
+            output[resource.data : resource.data + 0x10] = rebuilt
+            changed += 1
+    return len(event_resources), changed
 
 
 def _collision_source(
@@ -748,6 +829,10 @@ def import_scene(
     if not isinstance(nodes, list):
         raise FieldSceneImportError("GLB has no node array")
     output = bytearray(field_data)
+    wrapper = _field_wrapper(nodes)
+    events, changed_events = _import_events(
+        field_data, output, data_end, resources, wrapper
+    )
     seen: set[tuple[int, int]] = set()
     used_collision_meshes: set[int] = set()
     changed_resources: set[tuple[int, int]] = set()
@@ -755,6 +840,9 @@ def import_scene(
     collision_meshes = changed_collision_meshes = collision_vertices = 0
     collision_faces = changed_collision_faces = 0
     motion_resources = motion_tracks = changed_motion_tracks = 0
+    cameras = changed_cameras = placements = changed_placements = 0
+    source_event_assignments: list[int] = []
+    edited_event_assignments: list[int] = []
     for node_index, node in enumerate(nodes):
         if not isinstance(node, dict):
             continue
@@ -844,6 +932,107 @@ def import_scene(
                 "the FLD2"
             )
 
+        if resource.type_id == 4 and resource.data:
+            cameras += 1
+            fovy = node_extras.get("ddsCameraYFov")
+            if (
+                not isinstance(fovy, (int, float))
+                or isinstance(fovy, bool)
+                or not math.isfinite(fovy)
+                or fovy <= 0.0
+            ):
+                raise FieldSceneImportError(
+                    f"camera {expected_name!r} has an invalid vertical field of view"
+                )
+            try:
+                edited_fovy = f32(float(fovy))
+            except (OverflowError, struct.error) as exc:
+                raise FieldSceneImportError(
+                    f"camera {expected_name!r} field of view is outside float32 range"
+                ) from exc
+            source_fovy = struct.unpack_from("<f", field_data, resource.data)[0]
+            if edited_fovy != source_fovy:
+                struct.pack_into("<f", output, resource.data, edited_fovy)
+                changed_cameras += 1
+                changed_resources.add(key)
+
+        if resource.type_id == 10 and resource.data:
+            placements += 1
+            kind, source_event, source_visible, payload = struct.unpack_from(
+                "<IiII", field_data, resource.data
+            )
+            metadata = node_extras.get("ddsPlacement")
+            allowed = {"kindId", "event", "visible", "specialPoint"}
+            if (
+                not isinstance(metadata, dict)
+                or set(metadata) != allowed
+                or metadata.get("kindId") != kind
+            ):
+                raise FieldSceneImportError(
+                    f"placement {expected_name!r} changes its identity"
+                )
+            event_value = metadata.get("event")
+            if event_value is None:
+                edited_event = -1
+            else:
+                edited_event = _metadata_integer(
+                    event_value,
+                    0,
+                    events - 1,
+                    f"placement {expected_name!r} event",
+                )
+            edited_visible = _metadata_integer(
+                metadata.get("visible"),
+                0,
+                0xFFFFFFFF,
+                f"placement {expected_name!r} visibility",
+            )
+            if source_event >= 0:
+                source_event_assignments.append(source_event)
+            if edited_event >= 0:
+                edited_event_assignments.append(edited_event)
+
+            special_changed = False
+            special = metadata.get("specialPoint")
+            if kind == 8:
+                source_kind, source_id = fld._read_special_point(
+                    field_data, payload, f"placement {expected_name}"
+                )
+                if not isinstance(special, dict) or set(special) != {"kind", "id"}:
+                    raise FieldSceneImportError(
+                        f"placement {expected_name!r} has invalid special-point metadata"
+                    )
+                try:
+                    edited_kind = fld.SPECIAL_POINT_KIND_IDS[special.get("kind")]
+                except (KeyError, TypeError) as exc:
+                    raise FieldSceneImportError(
+                        f"placement {expected_name!r} has an unknown special-point kind"
+                    ) from exc
+                edited_id = _metadata_integer(
+                    special.get("id"),
+                    0,
+                    0xFFFFFFFF,
+                    f"placement {expected_name!r} special-point id",
+                )
+                if (edited_kind, edited_id) != (source_kind, source_id):
+                    struct.pack_into("<II", output, payload, edited_kind, edited_id)
+                    special_changed = True
+            elif special is not None:
+                raise FieldSceneImportError(
+                    f"placement {expected_name!r} exposes a special-point payload"
+                )
+
+            if (edited_event, edited_visible) != (source_event, source_visible):
+                struct.pack_into(
+                    "<iI", output, resource.data + 4, edited_event, edited_visible
+                )
+            if (
+                (edited_event, edited_visible) != (source_event, source_visible)
+                or special_changed
+            ):
+                changed_placements += 1
+                changed_resources.add(key)
+
         native = list(struct.unpack_from("<12f", field_data, resource.transform))
         translation_values = native[:3]
         translation = (
@@ -920,21 +1109,16 @@ def import_scene(
         raise FieldSceneImportError(
             f"GLB is missing type {type_id} serial {serial}"
         )
-    if not by_key:
-        has_field_wrapper = any(
-            isinstance(node, dict)
-            and node.get("name") == "FLD2 field data"
-            and isinstance(node.get("extras"), dict)
-            for node in nodes
+    if sorted(edited_event_assignments) != sorted(source_event_assignments):
+        raise FieldSceneImportError(
+            "placement edits change the FLD2 event assignment set"
         )
-        if not has_field_wrapper:
-            raise FieldSceneImportError("GLB has no FLD2 field-data wrapper")
 
     rebuilt = bytes(output)
     fld.validate(rebuilt)
     return rebuilt, ImportSummary(
-        len(seen),
-        len(changed_resources),
+        len(seen) + events,
+        len(changed_resources) + changed_events,
         translations,
         rotations,
         scales,
@@ -946,6 +1130,12 @@ def import_scene(
         changed_motion_tracks,
         collision_faces,
         changed_collision_faces,
+        cameras,
+        changed_cameras,
+        placements,
+        changed_placements,
+        events,
+        changed_events,
     )
 
 
@@ -981,7 +1171,9 @@ def main() -> None:
         f"meshes, {summary.collision_vertices} collision vertices, "
         f"{summary.changed_collision_faces} of {summary.collision_faces} collision "
         f"faces, {summary.changed_motion_tracks} of {summary.motion_tracks} motion "
-        "tracks)"
+        f"tracks, {summary.changed_cameras} of {summary.cameras} cameras, "
+        f"{summary.changed_placements} of {summary.placements} placements, "
+        f"{summary.changed_events} of {summary.events} events)"
     )
 
 

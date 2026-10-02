@@ -395,10 +395,14 @@ python3 tools/fld_scene.py extracted/f024_003.LB field-world.glb \
 The resulting GLB contains the textured, animated model hierarchy together
 with translucent unlit collision surfaces and transformed nodes for every
 named camera and placement. Camera nodes retain their vertical field of view
-as metadata. Placements use a shared octahedral marker so doors, event points,
-terminals, and other script-facing positions are visible in ordinary glTF
-viewers; `--placement-marker-size` sets its radius in native DDS units, or zero
-hides the geometry while retaining the nodes and metadata.
+as metadata. Each placement carries its native kind, visibility, event-table
+reference, and typed save, heal, or hunt payload when present. The field
+wrapper holds the ordered type-6 event table, including resource and procedure
+identity plus event flags and reserved words. Placements use a shared
+octahedral marker so doors, event points, terminals, and other script-facing
+positions are visible in ordinary glTF viewers; `--placement-marker-size` sets
+its radius in native DDS units, or zero hides the geometry while retaining the
+nodes and metadata.
 
 Type-9 camera and path motion resources become glTF animations on separate
 motion nodes. Vector tracks drive translation and quaternion tracks drive
@@ -509,6 +513,25 @@ writing. Coordinates and transform components that still equal the exported
 values retain their original float bits, including signed zero and
 unrepresented fourth components.
 
+### Field gameplay-resource import
+
+Camera `ddsCameraYFov` metadata accepts positive finite vertical field-of-view
+edits. The wrapper's ordered `ddsEvents` table accepts changes to each event's
+flags and two reserved words, while its index, resource name, and field-script
+procedure remain locked identities. This preserves the procedure link rather
+than treating a glTF metadata edit as a script rename.
+
+Placement `ddsPlacement` metadata accepts visibility changes and event-table
+reassignment. The complete set of assigned event indices must remain the same,
+so event ownership can move between placements without silently dropping or
+duplicating a script trigger. Placement kind remains structural. Save, heal,
+and hunt points expose their typed kind and ID through `specialPoint`; other
+placement payloads remain source-owned until their formats are understood.
+
+The tracked corpus contains 2,954 events, and every one is assigned exactly
+once by a placement. The importer checks this relationship after all edits and
+then validates the rebuilt FLD2 object graph.
+
 ### Field camera and path motion import
 
 Type-9 translation, quaternion, scalar, and light key values can also be
@@ -524,12 +547,12 @@ Collision face topology remains authoritative in `.fldasm`, where its native
 meaning is represented without loss. FLD1 mesh streams use the separate model
 geometry importer above; FLD1 hierarchy and animation, AMB geometry, and
 textures remain under their exact source tools. An unchanged scene imports
-byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering 5,533
+byte-identically across all 591 DDS1 and 621 DDS2 FLD2 sources, covering 5,524
 collision meshes and 17,282 collision, camera, and placement transforms.
 
-Across all 1,212 tracked FLD2 files, the scene layer validates 5,533 collision
-resources with 86,410 source faces and 167,485 output triangles, 1,551 cameras,
-10,222 placements, and 872 motion resources.
+Across all 1,212 tracked FLD2 files, the scene layer validates 5,524 collision
+resources with 86,410 source faces and 167,485 output triangles, 1,543 cameras,
+10,215 placements, 2,954 events, and 872 motion resources.
 
 Each transform is `0x30` bytes: four position floats, four rotation floats,
 and four scale floats. Each collision object also starts with a `0x30`-byte
