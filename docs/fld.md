@@ -319,6 +319,15 @@ python3 tools/fld_scene.py src/dds1/data/field/f011_001.f1asm field.glb \
   --meters-per-unit 0.01 --frames-per-second 30
 ```
 
+An AMB can be added to the same scene, with one or more area names selected
+explicitly when the automap contains several maps:
+
+```sh
+python3 tools/fld_scene.py extracted/f024_003.LB field-world.glb \
+  --automap src/dds1/data/field/f024.ambasm --automap-area 003 \
+  --meters-per-unit 0.01 --frames-per-second 30
+```
+
 The resulting GLB contains the textured, animated model hierarchy together
 with translucent unlit collision surfaces and transformed nodes for every
 named camera and placement. Camera nodes retain their vertical field of view
@@ -334,6 +343,12 @@ face and triangle counts. Tagged polygons also appear in `ddsAutomapFaces`
 with their source face index, output triangle range, discovery block, and upper
 name selector. Unit conversion is shared with the model exporter, so both
 layers stay in the same coordinate space and DDS axes remain intact.
+
+The optional AMB layer adds its model geometry, sub-block hierarchy, bounds,
+floors, and icon markers to that coordinate space. Area selection is explicit:
+the numeric FLD2 discovery selector is not assumed to identify an AMB
+sub-block, and the exporter does not invent a cross-resource link that the
+runtime and retail data do not guarantee.
 
 The scene layer validates all 1,232 supported FLD2 payload occurrences across
 both games: 5,533 collision resources and 167,623 output triangles, 1,551
