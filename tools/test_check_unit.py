@@ -7,8 +7,11 @@ import unittest
 from check_unit import (
     common_symbols,
     owned_bss_size,
+    owns_exact_section_item,
     owns_exact_bss,
     relocate_sdata_item,
+    section_symbols,
+    source_owned_item_size,
     trim_sdata_item,
 )
 
@@ -122,6 +125,36 @@ segments:
             common_symbols(nm),
             [("fileManagerWork", 0x40), ("ordinaryCommon", 8)],
         )
+
+
+class SectionOwnershipTests(unittest.TestCase):
+    SYMBOLS = """\
+00000000 g     O .sdata 00000008 D_003BC7D8
+00000008 g     O .sdata 00000008 D_003BC7E0
+00000000 g     O .data  00000008 unrelated
+00000000         *UND*  00000040 fileManagerWork
+"""
+
+    def test_parses_only_requested_section(self):
+        self.assertEqual(
+            section_symbols(self.SYMBOLS, ".sdata"),
+            [(0, 8, "D_003BC7D8"), (8, 8, "D_003BC7E0")],
+        )
+
+    def test_requires_exact_extent_and_retail_address(self):
+        definitions = section_symbols(self.SYMBOLS, ".sdata")
+        syms = {"D_003BC7D8": 0x003BC7D8, "D_003BC7E0": 0x003BC7E0}
+
+        self.assertTrue(owns_exact_section_item(
+            definitions, syms, 0, 8, 0x003BC7D8))
+        self.assertFalse(owns_exact_section_item(
+            definitions, syms, 0, 4, 0x003BC7D8))
+        self.assertFalse(owns_exact_section_item(
+            definitions, syms, 0, 8, 0x003BC7E0))
+        self.assertEqual(source_owned_item_size(
+            definitions, syms, 0, 0x003BC7D8), 8)
+        self.assertIsNone(source_owned_item_size(
+            definitions, syms, 0, 0x003BC7E0))
 
 
 if __name__ == "__main__":
