@@ -66,8 +66,81 @@ def text_section(obj):
 
 # Only units with their own .rodata subsegment (tools/split_rodata.py) may emit
 # rodata, and only jump tables, which are verified entry by entry. Strings and
-# constants still come from INCLUDE_RODATA; other data is not split per unit.
+# constants still come from INCLUDE_RODATA. A unit may emit BSS only when the
+# YAML gives it an exact, bounded dict-form BSS subsegment; other data remains
+# fail-closed.
 DATA_SECTIONS = (".rodata", ".data", ".sdata", ".sbss", ".bss", ".lit4", ".lit8")
+YAML_ITEM = re.compile(
+    r"^(?P<indent>[ \t]*)-\s*(?P<body>[^\n#]*?)(?:\s+#.*)?$", re.M
+)
+
+
+def _inline_yaml_fields(body):
+    """Parse the scalar fields from one simple inline YAML mapping."""
+    body = body.strip()
+    if not body.startswith("{") or not body.endswith("}"):
+        return None
+    fields = {}
+    for field in body[1:-1].split(","):
+        if ":" not in field:
+            return None
+        key, value = field.split(":", 1)
+        fields[key.strip()] = value.strip().strip("'\"")
+    return fields
+
+
+def owned_bss_size(yaml_text, unit):
+    """Return an exact dict-form per-unit BSS span, or None.
+
+    NOBITS subsegments share a file offset, so their retail size comes from
+    consecutive VRAM boundaries.  Accept only an unambiguous inline mapping
+    whose immediate sibling is another inline mapping with a greater VRAM.
+    """
+    items = list(YAML_ITEM.finditer(yaml_text))
+    matches = []
+    for index, item in enumerate(items):
+        fields = _inline_yaml_fields(item.group("body"))
+        if fields is None or fields.get("type") != ".bss" \
+                or fields.get("name") != unit:
+            continue
+        try:
+            start = int(fields["vram"], 0)
+        except (KeyError, ValueError):
+            continue
+        sibling = None
+        indent = len(item.group("indent"))
+        for later in items[index + 1:]:
+            later_indent = len(later.group("indent"))
+            if later_indent < indent:
+                break
+            if later_indent == indent:
+                sibling = later
+                break
+        if sibling is None:
+            continue
+        next_fields = _inline_yaml_fields(sibling.group("body"))
+        try:
+            end = int(next_fields["vram"], 0) if next_fields is not None else 0
+        except (KeyError, ValueError):
+            continue
+        if end > start:
+            matches.append(end - start)
+    return matches[0] if len(matches) == 1 else None
+
+
+def owns_exact_bss(yaml_text, unit, size):
+    expected = owned_bss_size(yaml_text, unit)
+    return expected is not None and size == expected
+
+
+def common_symbols(nm_text):
+    """Return sized COMMON/SCOMMON definitions from `nm -S` output."""
+    result = []
+    for line in nm_text.splitlines():
+        parts = line.split()
+        if len(parts) == 4 and parts[2] in "Cc":
+            result.append((parts[3], int(parts[1], 16)))
+    return result
 
 
 def relocations(obj):
@@ -205,11 +278,15 @@ def main():
         all_relocs = relocations(obj)
         relocs, rodata_relocs = all_relocs[".text"], all_relocs[".rodata"]
         sdata_relocs = all_relocs[".sdata"]
+        defined_symbols = run(
+            str(BIN / "mips-ps2-decompals-nm"), "-S", "--defined-only", str(obj)
+        )
         funcs = []
-        for line in run(str(BIN / "mips-ps2-decompals-nm"), "-S", "--defined-only", str(obj)).splitlines():
+        for line in defined_symbols.splitlines():
             parts = line.split()
             if len(parts) == 4 and parts[2] in "Tt":
                 funcs.append((int(parts[0], 16), int(parts[1], 16), parts[3]))
+        common = common_symbols(defined_symbols)
         undefined = {l.split()[-1] for l in run(str(BIN / "mips-ps2-decompals-nm"), "-u", str(obj)).splitlines() if l.strip()}
         # The build compiles the unit with its asm included, not with SKIP_ASM.
         # ee-gcc 2.96's CSE hashes symbol-name addresses, so the preprocessed
@@ -612,13 +689,25 @@ def main():
         del emitted[".sdata"]
     if emitted.get(".lit4") and owns_rodata(version, unit_name, "lit4"):
         del emitted[".lit4"]  # every constant was compared with retail above
+    owned_bss = owned_bss_size(yaml_text, unit_name)
+    if emitted.get(".bss") and owns_exact_bss(
+            yaml_text, unit_name, emitted[".bss"]):
+        del emitted[".bss"]
     # --func compares one function: the rest of the unit's data is not its business.
+    if not args.func:
+        for name, size in common:
+            bad += 1
+            print(f"DATA COMMON {name}: 0x{size:X} bytes emitted by the unit; "
+                  "use an explicit, owned .bss definition")
     for name, size in ({} if args.func else emitted).items():
         bad += 1
-        why = ("rodata no instruction refers to (unused static data?)"
-               if name == ".rodata" and owns_rodata(version, unit_name)
-               else "reference the existing D_ symbol instead or keep the function as INCLUDE_ASM "
-               "(this data is not split per unit yet)")
+        if name == ".rodata" and owns_rodata(version, unit_name):
+            why = "rodata no instruction refers to (unused static data?)"
+        elif name == ".bss" and owned_bss is not None:
+            why = f"the unit's retail .bss span is 0x{owned_bss:X} bytes"
+        else:
+            why = ("reference the existing D_ symbol instead or keep the function as INCLUDE_ASM "
+                   "(this data is not split per unit yet)")
         print(f"DATA {name}: 0x{size:X} bytes emitted by the unit; {why}")
     # Constructs that force codegen rather than express the original source.
     source_text = re.sub(r"/\*.*?\*/|//[^\n]*", "", unit.read_text(), flags=re.S)
