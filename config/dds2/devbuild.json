@@ -4,10 +4,10 @@
   "extension_vaddr": "0x0048E000",
   "alignment": "0x1000",
   "heap_alignment": "0x80",
-  "expected_replacement_symbols": 169,
-  "expected_shifted_replacement_symbols": 91,
-  "expected_shifted_symbol_relocations": 1455,
-  "expected_cross_replacement_relocations": 128,
+  "expected_replacement_symbols": 180,
+  "expected_shifted_replacement_symbols": 93,
+  "expected_shifted_symbol_relocations": 1458,
+  "expected_cross_replacement_relocations": 167,
   "expected_repaired_relocation_words": 0,
   "retail_static_end": "0x00488B30",
   "bss_end_assertions": [
@@ -195,6 +195,23 @@
         },
         {
           "section": ".bss",
+          "size": 0
+        }
+      ]
+    },
+    {
+      "retail_object": "build/dds2/src/dds2/sdf/sdfChip.o",
+      "object": "build/dds2/dev/sdfChip.o",
+      "expected_symbols": 11,
+      "expected_shifted_symbols": 2,
+      "fallback_symbols": [],
+      "retained_sections": [
+        {
+          "section": ".rodata",
+          "size": 0
+        },
+        {
+          "section": ".data",
           "size": 0
         }
       ]
@@ -412,6 +429,16 @@
       "expected_relocations": 56
     },
     {
+      "object": "build/dds2/src/dds2/sdf/sdfChip.o",
+      "section": ".text",
+      "old_size": "0x190",
+      "new_size": "0x1A8",
+      "alignment": 8,
+      "old_vaddr": "0x00328E18",
+      "expected_relocations": 18,
+      "expected_target_relocations": 414
+    },
+    {
       "object": "build/dds2/src/dds2/game/code_00328FA8.o",
       "section": ".text",
       "old_size": "0x294",
@@ -419,6 +446,30 @@
       "alignment": 8,
       "old_vaddr": "0x00328FA8",
       "expected_relocations": 37,
+      "expected_target_relocations": 6
+    },
+    {
+      "object": "build/dds2/src/dds2/sdf/sdfChip.o",
+      "section": ".sbss",
+      "storage": "nobits",
+      "old_size": "0x20",
+      "new_size": "0x20",
+      "alignment": 8,
+      "old_vaddr": "0x00439108",
+      "expected_relocations": 0,
+      "expected_target_relocations": 30,
+      "expected_retail_gp_references": 18,
+      "expected_gp_references": 0
+    },
+    {
+      "object": "build/dds2/src/dds2/sdf/sdfChip.o",
+      "section": ".bss",
+      "storage": "nobits",
+      "old_size": "0x58",
+      "new_size": "0x58",
+      "alignment": 8,
+      "old_vaddr": "0x0045F0A0",
+      "expected_relocations": 0,
       "expected_target_relocations": 6
     },
     {
