@@ -1596,16 +1596,16 @@ end
                     },
                     {
                         "CALL_EVENT": (0, "call", None),
-                        "SUBMIT_EVENT": (0, "submit", None),
+                        "SUBMIT_EVENT": (None, "submit", 0),
                         "SUBMIT_EVENT_WITH_SELECTION": (
                             1,
                             "submit-selection",
                             0,
                         ),
                         "SUBMIT_EVENT_IMMEDIATE": (
-                            0,
-                            "submit-immediate",
                             None,
+                            "submit-immediate",
+                            0,
                         ),
                     },
                 )
@@ -2390,7 +2390,7 @@ end
             ),
             (37752, 1910, 287),
         )
-        self.assertEqual(totals["event_references"], 56)
+        self.assertEqual(totals["event_references"], 53)
         self.assertEqual(totals["procedure_references"], 463)
         self.assertEqual((totals["font"], totals["glyphs"]), (433, 159))
         self.assertEqual(totals["short_string_counts"], 22)

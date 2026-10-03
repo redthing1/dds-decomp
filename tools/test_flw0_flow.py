@@ -32,7 +32,7 @@ main:
   COMM CREATE_SCRIPT_TASK
   PUSHEVENT e632
   COMM CALL_EVENT
-  PUSHEVENT e633
+  PUSHIS 633
   COMM SUBMIT_EVENT
   PUSHIS 501
   PUSHIS 22
@@ -95,14 +95,30 @@ class Flw0FlowTests(unittest.TestCase):
                     "command": "CALL_EVENT",
                     "count": 1,
                 },
+            ],
+        )
+        self.assertEqual(
+            [
+                {
+                    key: request[key]
+                    for key in (
+                        "source",
+                        "requestId",
+                        "kind",
+                        "command",
+                        "count",
+                    )
+                }
+                for request in flow["eventRequests"]
+            ],
+            [
                 {
                     "source": 0,
-                    "eventId": 633,
-                    "event": "e633",
+                    "requestId": 633,
                     "kind": "submit",
                     "command": "SUBMIT_EVENT",
                     "count": 1,
-                },
+                }
             ],
         )
         self.assertEqual(
@@ -121,7 +137,7 @@ class Flw0FlowTests(unittest.TestCase):
 
     def test_keeps_dynamic_event_target_unresolved(self) -> None:
         source = SOURCE.replace("  PUSHEVENT e632\n", "  PUSHIX 0\n").replace(
-            "  PUSHEVENT e633\n", "  PUSHIX 0\n"
+            "  PUSHIS 633\n", "  PUSHIX 0\n"
         )
         flow = flw0_flow.analyze(
             flw0.parse_source(source), flw0_profiles.get("dds1")
@@ -141,7 +157,7 @@ class Flw0FlowTests(unittest.TestCase):
                 {
                     "source": 0,
                     "pc": 8,
-                    "kind": "event",
+                    "kind": "eventRequest",
                     "value": None,
                     "command": "SUBMIT_EVENT",
                     "dispatch": "submit",
@@ -184,11 +200,33 @@ class Flw0FlowTests(unittest.TestCase):
                 "command": "SUBMIT_EVENT_WITH_SELECTION",
             },
         )
+        selected_request = next(
+            request
+            for request in flow["eventRequests"]
+            if request["command"] == "SUBMIT_EVENT_WITH_SELECTION"
+        )
+        self.assertEqual(
+            {
+                key: selected_request[key]
+                for key in (
+                    "requestId",
+                    "selectionId",
+                    "selection",
+                    "kind",
+                )
+            },
+            {
+                "requestId": 258,
+                "selectionId": 634,
+                "selection": "e634",
+                "kind": "submit-selection",
+            },
+        )
         self.assertIn(
             {
                 "source": 0,
                 "pc": 17,
-                "kind": "event",
+                "kind": "eventRequest",
                 "value": None,
                 "command": "SUBMIT_EVENT_IMMEDIATE",
                 "dispatch": "submit-immediate",
