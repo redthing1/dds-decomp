@@ -97,7 +97,7 @@ s32 sdfThreadSleepSelf(void) {
 }
 
 /* Promote the next list node to current; an empty list clears current. */
-void sdfAdvanceNodeCursor(SdfChipClass *sizeClass) {
+void sdfSelectNextChipPage(SdfChipClass *sizeClass) {
     SdfChipPage *nextPage;
 
     nextPage = sizeClass->availablePages;
@@ -108,17 +108,17 @@ void sdfAdvanceNodeCursor(SdfChipClass *sizeClass) {
 }
 
 /* Pop a recycled cell, count it live, and advance when its page becomes full. */
-SdfChipCell *sdfAdvanceCursorWalk(SdfChipClass *sizeClass, SdfChipPage *page) {
+SdfChipCell *sdfAllocRecycledChipCell(SdfChipClass *sizeClass, SdfChipPage *page) {
     SdfChipCell *freeCell = page->freeCells;
     page->usedCells++;
     page->freeCells = freeCell->nextFree;
     if (page->usedCells == sizeClass->cellCount) {
-        sdfAdvanceNodeCursor(sizeClass);
+        sdfSelectNextChipPage(sizeClass);
     }
     return freeCell;
 }
 
-SdfChipCell *func_002CFDF0(SdfChipClass *sizeClass, SdfChipPage *page) {
+SdfChipCell *sdfAllocFreshChipCell(SdfChipClass *sizeClass, SdfChipPage *page) {
     s16 cellCount = sizeClass->cellCount;
     s32 usedCells = (u16)page->usedCells + 1;
     s32 remaining = page->bumpCellsRemaining;
@@ -128,24 +128,24 @@ SdfChipCell *func_002CFDF0(SdfChipClass *sizeClass, SdfChipPage *page) {
     cell = (SdfChipCell *)(page->base + (cellCount - remaining) * sizeClass->cellSize);
     page->bumpCellsRemaining = remaining - 1;
     if (page->bumpCellsRemaining == 0) {
-        page->allocate = sdfAdvanceCursorWalk;
+        page->allocate = sdfAllocRecycledChipCell;
         if ((s16)usedCells == cellCount) {
-            sdfAdvanceNodeCursor(sizeClass);
+            sdfSelectNextChipPage(sizeClass);
         }
     }
     return cell;
 }
 
-SdfChipCell *sdfCursorSlotAlloc(SdfChipClass *sizeClass) {
+SdfChipCell *sdfAllocFromNewChipPage(SdfChipClass *sizeClass) {
     SdfChipPage *page = sdfFreeChipPages;
 
     sdfFreeChipPages = page->next;
     page->usedCells = 0;
-    page->allocate = func_002CFDF0;
+    page->allocate = sdfAllocFreshChipCell;
     sizeClass->currentPage = page;
     page->sizeClass = sizeClass;
     page->bumpCellsRemaining = sizeClass->cellCount;
-    return func_002CFDF0(sizeClass, page);
+    return sdfAllocFreshChipCell(sizeClass, page);
 }
 
 extern s32 func_00312C08(void);
@@ -165,7 +165,7 @@ void *sdfAllocSizeClassBlock(s32 size) {
     sizeClass = &sdfChipClassTable.classes[index];
     interruptsDisabled = func_00312C08();
     if (sizeClass->currentPage == NULL) {
-        result = sdfCursorSlotAlloc(sizeClass);
+        result = sdfAllocFromNewChipPage(sizeClass);
     } else {
         result = sizeClass->currentPage->allocate(sizeClass, sizeClass->currentPage);
     }
